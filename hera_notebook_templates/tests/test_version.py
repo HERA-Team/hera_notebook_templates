@@ -16,9 +16,9 @@ from ..data import DATA_PATH
 
 
 def test_get_gitinfo_file():
-    hera_cal_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    hera_notebook_templates_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
-    git_file = os.path.join(hera_cal_dir, 'GIT_INFO')
+    git_file = os.path.join(hera_notebook_templates_dir, 'GIT_INFO')
     if not os.path.exists(git_file):
         # write a file to read in
         temp_git_file = os.path.join(DATA_PATH, 'test_output/GIT_INFO')
@@ -51,16 +51,16 @@ def test_get_gitinfo_file():
 def test_construct_version_info():
     # this test is a bit silly because it uses the nearly the same code as the original,
     # but it will detect accidental changes that could cause problems.
-    # It does test that the __version__ attribute is set on hera_cal.
+    # It does test that the __version__ attribute is set on hera_notebook_templates.
 
-    # this line is modified from the main implementation since we're in hera_cal/tests/
-    hera_cal_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    # this line is modified from the main implementation since we're in hera_notebook_templates/tests/
+    hera_notebook_templates_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
     def get_git_output(args, capture_stderr=False):
         """Get output from Git, ensuring that it is of the ``str`` type,
         not bytes."""
 
-        argv = ['git', '-C', hera_cal_dir] + args
+        argv = ['git', '-C', hera_notebook_templates_dir] + args
 
         if capture_stderr:
             data = subprocess.check_output(argv, stderr=subprocess.STDOUT)
@@ -79,7 +79,7 @@ def test_construct_version_info():
     except subprocess.CalledProcessError:
         try:
             # Check if a GIT_INFO file was created when installing package
-            git_file = os.path.join(hera_cal_dir, 'GIT_INFO')
+            git_file = os.path.join(hera_notebook_templates_dir, 'GIT_INFO')
             with open(git_file) as data_file:
                 data = [x for x in json.loads(data_file.read().strip())]
                 git_origin = data[0]
