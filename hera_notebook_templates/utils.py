@@ -257,30 +257,35 @@ def plotNodeAveragedSummary(uv,HHfiles,jd,pols=['xx','yy'],baseline_groups=[],re
         baseline_groups = [(14,0,'14m E-W'),(14,-11,'14m NW-SE'),(14,11,'14m SW-NE'),(29,0,'29m E-W'),(29,22,'29m SW-NE'),
                        (44,0,'44m E-W'),(58.5,0,'58m E-W'),(73,0,'73m E-W'),(87.6,0,'88m E-W'),
                       (102.3,0,'102m E-W')]
-    fig,axs = plt.subplots(len(pols),2,figsize=(16,16))
-    maxLength = 0
-    cmap = plt.get_cmap('Blues')
     nodeMedians,lsts,badAnts=get_correlation_baseline_evolutions(uv,HHfiles,jd,
                                                                 bl_type=baseline_groups,removeBadAnts=removeBadAnts)
-    for group in baseline_groups:
-        if group[0] > maxLength:
-            maxLength = group[0]
-    for group in baseline_groups:
-        length = group[0]
-        data = nodeMedians[group[2]]
-        colorInd = float(length/maxLength)
-        if len(data['inter']['xx']) == 0:
-            continue
-        for i in range(len(pols)):
-            pol = pols[i]
-            axs[i][0].plot(lsts, data['inter'][pol], color=cmap(colorInd), label=group[2])
-            axs[i][1].plot(lsts, data['intra'][pol], color=cmap(colorInd), label=group[2])
-            axs[i][0].set_ylabel('Median Correlation Metric')
-            axs[i][0].set_title('Internode, Polarization %s' % pol)
-            axs[i][1].set_title('Intranode, Polarization %s' % pol)
-    axs[1][1].legend()
-    axs[1][0].set_xlabel('LST (hours)')
-    axs[1][1].set_xlabel('LST (hours)')
+    if len(lsts)>1:
+        fig,axs = plt.subplots(len(pols),2,figsize=(16,16))
+        maxLength = 0
+        cmap = plt.get_cmap('Blues')
+        for group in baseline_groups:
+            if group[0] > maxLength:
+                maxLength = group[0]
+        for group in baseline_groups:
+            length = group[0]
+            data = nodeMedians[group[2]]
+            colorInd = float(length/maxLength)
+            if len(data['inter']['xx']) == 0:
+                continue
+            for i in range(len(pols)):
+                pol = pols[i]
+                axs[i][0].plot(lsts, data['inter'][pol], color=cmap(colorInd), label=group[2])
+                axs[i][1].plot(lsts, data['intra'][pol], color=cmap(colorInd), label=group[2])
+                axs[i][0].set_ylabel('Median Correlation Metric')
+                axs[i][0].set_title('Internode, Polarization %s' % pol)
+                axs[i][1].set_title('Intranode, Polarization %s' % pol)
+        axs[1][1].legend()
+        axs[1][0].set_xlabel('LST (hours)')
+        axs[1][1].set_xlabel('LST (hours)')
+    else:
+        print('#############################################################################')
+        print('Not enough LST coverage to show metric evolution - that plot is being skipped')
+        print('#############################################################################')
     return badAnts
     
 def plotVisibilitySpectra(file,jd,badAnts=[],pols=['xx','yy']):
@@ -463,8 +468,8 @@ def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.5):
                 odd = (s - d)/2
                 odd = np.divide(odd,np.abs(odd))
                 product = np.multiply(even,np.conj(odd))
-                data[pol][i,j] = np.abs(np.average(product))
-                thisAnt.append(np.abs(np.average(product)))
+                data[pol][i,j] = np.abs(np.nanmean(product))
+                thisAnt.append(np.abs(np.nanmean(product)))
             if np.nanmedian(thisAnt) < badThresh and antnumsAll[i] not in badAnts:
                 badAnts.append(antnumsAll[i])
     return data, badAnts
