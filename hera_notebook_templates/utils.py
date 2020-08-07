@@ -407,7 +407,7 @@ def plot_antenna_positions(uv, badAnts=[]):
     
 def plot_lst_coverage(uvd):
     """
-    Plots the LST coverage for a particular night.
+    Plots the LST and JD coverage for a particular night.
     
     Parameters
     ----------
@@ -420,7 +420,6 @@ def plot_lst_coverage(uvd):
     truetimes = [np.min(np.abs(jds-jd))<=0.00001 for jd in alltimes]
     usetimes = np.tile(np.asarray(truetimes),(20,1))
 
-    
     fig = plt.figure(figsize=(16,2))
     ax = fig.add_subplot()
     im = ax.imshow(usetimes, aspect='auto',cmap='RdYlGn',vmin=0,vmax=1)
@@ -432,7 +431,6 @@ def plot_lst_coverage(uvd):
     ax.set_xticklabels(np.around(alltimes[xticks],2))
     ax.set_xlabel('JD')
     ax.set_title('Time Coverage')
-    
     ax2 = ax.twiny()
     ax2.set_xticks(xticks)
     jds = alltimes[xticks]
