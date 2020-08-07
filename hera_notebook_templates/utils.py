@@ -38,7 +38,7 @@ def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
     """
     nants = len(uvd_sum.antenna_numbers)
     freqs = uvd_sum.freq_array[0]*1e-6
-    lsts = uvd_sum.lst_array
+    lsts = uvd_sum.lst_array*3.819719
     sm = np.abs(uvd_sum.data_array[:,0,:,0])
     df = np.abs(uvd_diff.data_array[:,0,:,0])
 
