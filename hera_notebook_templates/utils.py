@@ -415,11 +415,34 @@ def plot_lst_coverage(uvd):
         Object containing a whole night of data, used to extract the time array.
     """
     lsts = uvd.lst_array*3.819719
-    fig = plt.figure(figsize=(12,10))
-    plt.hist(lsts, bins=int(len(np.unique(lsts))/20), alpha=0.7)
-    plt.xlabel('LST (hours)')
-    plt.ylabel('Count')
-    plt.title('LST Coverage')
+    jds = np.unique(uvd.time_array)
+    alltimes = np.arange(np.min(jds),np.max(jds),jds[2]-jds[1])
+    truetimes = [np.min(np.abs(jds-jd))<=0.00001 for jd in alltimes]
+    usetimes = np.tile(np.asarray(truetimes),(20,1))
+
+    
+    fig = plt.figure(figsize=(16,2))
+    ax = fig.add_subplot()
+    im = ax.imshow(usetimes, aspect='auto',cmap='RdYlGn',vmin=0,vmax=1)
+    fig.colorbar(im)
+    ax.set_yticklabels([])
+    ax.set_yticks([])
+    xticks = [int(i) for i in np.linspace(0,len(alltimes)-1,8)]
+    ax.set_xticks(xticks)
+    ax.set_xticklabels(np.around(alltimes[xticks],2))
+    ax.set_xlabel('JD')
+    ax.set_title('Time Coverage')
+    
+    ax2 = ax.twiny()
+    ax2.set_xticks(xticks)
+    jds = alltimes[xticks]
+    lstlabels = []
+    loc = EarthLocation.from_geocentric(*uvd.telescope_location, unit='m')
+    for jd in jds:
+        t = Time(jd,format='jd',location=loc)
+        lstlabels.append(t.sidereal_time('mean').hour)
+    ax2.set_xticklabels(np.around(lstlabels,2))
+    ax2.set_label('LST (hours)')
     
 def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
     """Plot Even/Odd visibility ratio waterfall.
