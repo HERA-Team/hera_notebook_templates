@@ -24,44 +24,6 @@ from uvtools import dspec
 import hera_qm 
 warnings.filterwarnings('ignore')
 
-def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
-    """Plot Even/Odd visibility ratio waterfall.
-    Parameters
-    ----------
-    uvd_sum : UVData Object
-        Object containing autos from sum files
-    uvd_diff : UVData Object
-        Object containing autos from diff files
-    Returns
-    -------
-    None
-    """
-    nants = len(uvd_sum.antenna_numbers)
-    freqs = uvd_sum.freq_array[0]*1e-6
-    lsts = uvd_sum.lst_array
-    sm = np.abs(uvd_sum.data_array[:,0,:,0])
-    df = np.abs(uvd_diff.data_array[:,0,:,0])
-
-    evens = (sm + df)/2
-    odds = (sm - df)/2
-    rat = np.divide(evens,odds)
-    fig = plt.figure(figsize=(14,3))
-    ax = fig.add_subplot()
-    im = plt.imshow(rat,aspect='auto')
-    fig.colorbar(im)
-    ax.set_title('Even/odd Visibility Ratio')
-    ax.set_xlabel('Frequency (MHz)')
-    ax.set_ylabel('Time (LST)')
-    yticks = [int(i) for i in np.linspace(len(lsts)-1,0, 4)]
-    ax.set_yticks(yticks)
-    ax.set_yticklabels(np.around(lsts[yticks], 1))
-    xticks = [int(i) for i in np.linspace(0,len(freqs)-1, 10)]
-    ax.set_xticks(xticks)
-    ax.set_xticklabels(np.around(freqs[xticks], 0))
-    i = 192
-    while i < len(freqs):
-        ax.axvline(i,color='r')
-        i += 192
 
 def load_data(data_path,JD):
     HHfiles = sorted(glob.glob("{0}/zen.{1}.*.sum.uvh5".format(data_path,JD)))
@@ -445,7 +407,7 @@ def plot_antenna_positions(uv, badAnts=[]):
     
 def plot_lst_coverage(uvd):
     """
-    Plots the LST coverage for a particular night.
+    Plots the LST and JD coverage for a particular night.
     
     Parameters
     ----------
@@ -453,11 +415,71 @@ def plot_lst_coverage(uvd):
         Object containing a whole night of data, used to extract the time array.
     """
     lsts = uvd.lst_array*3.819719
-    fig = plt.figure(figsize=(12,10))
-    plt.hist(lsts, bins=int(len(np.unique(lsts))/20), alpha=0.7)
-    plt.xlabel('LST (hours)')
-    plt.ylabel('Count')
-    plt.title('LST Coverage')
+    jds = np.unique(uvd.time_array)
+    alltimes = np.arange(np.min(jds),np.max(jds),jds[2]-jds[1])
+    truetimes = [np.min(np.abs(jds-jd))<=0.00001 for jd in alltimes]
+    usetimes = np.tile(np.asarray(truetimes),(20,1))
+
+    fig = plt.figure(figsize=(16,2))
+    ax = fig.add_subplot()
+    im = ax.imshow(usetimes, aspect='auto',cmap='RdYlGn',vmin=0,vmax=1)
+    fig.colorbar(im)
+    ax.set_yticklabels([])
+    ax.set_yticks([])
+    xticks = [int(i) for i in np.linspace(0,len(alltimes)-1,8)]
+    ax.set_xticks(xticks)
+    ax.set_xticklabels(np.around(alltimes[xticks],2))
+    ax.set_xlabel('JD')
+    ax.set_title('Time Coverage')
+    ax2 = ax.twiny()
+    ax2.set_xticks(xticks)
+    jds = alltimes[xticks]
+    lstlabels = []
+    loc = EarthLocation.from_geocentric(*uvd.telescope_location, unit='m')
+    for jd in jds:
+        t = Time(jd,format='jd',location=loc)
+        lstlabels.append(t.sidereal_time('mean').hour)
+    ax2.set_xticklabels(np.around(lstlabels,2))
+    ax2.set_label('LST (hours)')
+    
+def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
+    """Plot Even/Odd visibility ratio waterfall.
+    Parameters
+    ----------
+    uvd_sum : UVData Object
+        Object containing autos from sum files
+    uvd_diff : UVData Object
+        Object containing autos from diff files
+    Returns
+    -------
+    None
+    """
+    nants = len(uvd_sum.antenna_numbers)
+    freqs = uvd_sum.freq_array[0]*1e-6
+    lsts = uvd_sum.lst_array*3.819719
+    sm = np.abs(uvd_sum.data_array[:,0,:,0])
+    df = np.abs(uvd_diff.data_array[:,0,:,0])
+
+    evens = (sm + df)/2
+    odds = (sm - df)/2
+    rat = np.divide(evens,odds)
+    fig = plt.figure(figsize=(14,3))
+    ax = fig.add_subplot()
+    im = plt.imshow(rat,aspect='auto')
+    fig.colorbar(im)
+    ax.set_title('Even/odd Visibility Ratio')
+    ax.set_xlabel('Frequency (MHz)')
+    ax.set_ylabel('Time (LST)')
+    yticks = [int(i) for i in np.linspace(len(lsts)-1,0, 4)]
+    ax.set_yticks(yticks)
+    ax.set_yticklabels(np.around(lsts[yticks], 1))
+    xticks = [int(i) for i in np.linspace(0,len(freqs)-1, 10)]
+    ax.set_xticks(xticks)
+    ax.set_xticklabels(np.around(freqs[xticks], 0))
+    i = 192
+    while i < len(freqs):
+        ax.axvline(i,color='r')
+        i += 192
     
 def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.5):
     """
