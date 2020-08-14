@@ -75,7 +75,7 @@ def plot_autos(uvdx, uvdy):
     xlim = (np.min(freqs), np.max(freqs))
     ylim = (60, 90)
 
-    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2, Nside*2), dpi=75)
+    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2, Nside*2))
 
     fig.suptitle("JD = {0}, time = {1} UTC".format(jd, utc), fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
@@ -131,7 +131,7 @@ def plot_wfs(uvd, pol):
     utc = Time(jd, format='jd').datetime
     
     
-    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2,Nside*2), dpi=75)
+    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2,Nside*2))
     if pol == 0:
         fig.suptitle("waterfalls from {0} -- {1} East Polarization".format(times[0], times[-1]), fontsize=14)
     else:
@@ -145,9 +145,9 @@ def plot_wfs(uvd, pol):
             ax = axes[i,j]
             if k < Nants:
                 auto_bl = (ants[k], ants[k])
-                im = ax.imshow(np.log10(np.abs(amps[:, k , :, 0])), aspect='auto', rasterized=True,
-                           interpolation='nearest', vmin = 6.5, vmax = 8, 
-                           extent=[freqs[0], freqs[-1], np.max(lsts), np.min(lsts)])
+                im = ax.imshow(np.log10(np.abs(amps[:, k , :, 0])), 
+                               vmin = 6.5, vmax = 8, aspect='auto', 
+                               extent=[freqs[0], freqs[-1], np.max(lsts), np.min(lsts)])
         
                 ax.set_title(str(ants[k]), fontsize=10)
             else:
@@ -1099,7 +1099,7 @@ def plot_wfds(uvd, _data_sq, pol):
     utc = Time(jd, format='jd').datetime
     
     
-    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2,Nside*2), dpi=75)
+    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2,Nside*2))
     if pol == 'ee':
         fig.suptitle("delay spectrum (auto) waterfalls from {0} -- {1} East Polarization".format(times[0], times[-1]), fontsize=14)
     else:
@@ -1498,7 +1498,7 @@ def all_ant_mets(antmetfiles,HHfiles):
         antslabels.append(labeln)
         antslabels.append(labele)
 
-    fig, ax = plt.subplots(1, figsize=(16,20), dpi=75)
+    fig, ax = plt.subplots(1, figsize=(16,20))
 
     # plotting
     ax.matshow(xants, aspect='auto', cmap='RdYlGn_r', vmin=-.3, vmax=1.3,
