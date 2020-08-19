@@ -26,8 +26,10 @@ warnings.filterwarnings('ignore')
 
 
 def load_data(data_path,JD):
-    HHfiles = sorted(glob.glob("{0}/zen.{1}.*.sum.autos.uvh5".format(data_path,JD)))
-    difffiles = sorted(glob.glob("{0}/zen.{1}.*.diff.autos.uvh5".format(data_path,JD)))
+    HHfiles = sorted(glob.glob("{0}/zen.{1}.*.sum.uvh5".format(data_path,JD)))
+    difffiles = sorted(glob.glob("{0}/zen.{1}.*.diff.uvh5".format(data_path,JD)))
+    HHautos = sorted(glob.glob("{0}/zen.{1}.*.sum.autos.uvh5".format(data_path,JD)))
+    diffautos = sorted(glob.glob("{0}/zen.{1}.*.diff.autos.uvh5".format(data_path,JD)))
     Nfiles = len(HHfiles)
     hhfile_bases = map(os.path.basename, HHfiles)
     hhdifffile_bases = map(os.path.basename, difffiles)
@@ -56,7 +58,7 @@ def load_data(data_path,JD):
     uvd_yy1.ants = np.unique(np.concatenate([uvd_yy1.ant_1_array, uvd_yy1.ant_2_array]))
 
    
-    return HHfiles, difffiles, uvd_xx1, uvd_yy1
+    return HHfiles, difffiles, HHautos, diffautos, uvd_xx1, uvd_yy1
 
 def plot_autos(uvdx, uvdy):
     ants = uvdx.get_ants()
@@ -417,7 +419,7 @@ def plot_lst_coverage(uvd):
     lsts = uvd.lst_array*3.819719
     jds = np.unique(uvd.time_array)
     alltimes = np.arange(np.min(jds),np.max(jds),jds[2]-jds[1])
-    truetimes = [np.min(np.abs(jds-jd))<=0.00001 for jd in alltimes]
+    truetimes = [np.min(np.abs(jds-jd))<=0.0001 for jd in alltimes]
     usetimes = np.tile(np.asarray(truetimes),(20,1))
 
     fig = plt.figure(figsize=(16,2))
@@ -463,9 +465,13 @@ def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
     evens = (sm + df)/2
     odds = (sm - df)/2
     rat = np.divide(evens,odds)
+    print(rat)
     fig = plt.figure(figsize=(14,3))
     ax = fig.add_subplot()
-    im = plt.imshow(rat,aspect='auto')
+#     my_cmap = copy.deepcopy(matplotlib.cm.get_cmap('viridis'))
+#     my_cmap.set_under('w')
+#     my_cmap.set_over('r')
+    im = plt.imshow(rat,aspect='auto',vmin=0.5,vmax=2)
     fig.colorbar(im)
     ax.set_title('Even/odd Visibility Ratio')
     ax.set_xlabel('Frequency (MHz)')
@@ -480,6 +486,7 @@ def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
     while i < len(freqs):
         ax.axvline(i,color='r')
         i += 192
+    return rat
     
 def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.5):
     """
@@ -726,8 +733,14 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,badThresh=0.35,pols=['xx',
         df = UVData()
         try:
             sm.read(file, skip_bad_files=True)
-            df.read('%sdiff%s' % (file[0:-8],file[-5:]), skip_bad_files=True)
         except:
+            print(f'WARNING: unable to read {file}')
+            continue
+        try:
+            dffile = '%sdiff%s' % (file[0:-8],file[-5:])
+            df.read(dffile, skip_bad_files=True)
+        except:
+            print(f'WARNING: unable to read {dffile}')
             continue
         matrix, badAnts = calcEvenOddAmpMatrix(sm,df,nodes='auto',badThresh=badThresh)
         if plotMatrix is True and f in plotTimes:
@@ -750,6 +763,7 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,badThresh=0.35,pols=['xx',
                     result[group[2]]['intra'][pol] = []
             bls = get_baseline_type(uv,bl_type=group)
             if bls == None:
+                print(f'No baselines of type {group}')
                 continue
             baselines = [uv.baseline_to_antnums(bl) for bl in bls]
             for ant in badAnts:
