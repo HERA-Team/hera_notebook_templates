@@ -382,74 +382,53 @@ def plot_antenna_positions(uv, badAnts=[], use_ants='auto'):
     
     plt.figure(figsize=(12,10))
     nodes, antDict, inclNodes = generate_nodeDict(uv)
-#     print('nodes:')
-#     print(nodes)
-#     print('antDict:')
-#     print(antDict)
-#     print('inclNodes:')
-#     print(inclNodes)
-#     print('nodes keys:')
-    print(nodes.keys())
     N = len(nodes)
     cmap = plt.get_cmap('tab20')
-    n = 0
+    i = 0
     nodePos = geo_sysdef.read_nodes()
     antPos = geo_sysdef.read_antennas()
-#     loc = np.asarray(EarthLocation.from_geocentric(*uv.telescope_location, unit='m'))
-    loc = uv.telescope_location
-#     for node in sorted(inclNodes):
-#         color = cmap(round(20/N*n))
-#         n += 1
-#         ants = nodes[node]['ants']
-#         for antNum in ants:
-#             width = 0
-#             idx = np.argwhere(uv.antenna_numbers == antNum)[0][0]
-#             antPos = uv.antenna_positions[idx]
-#             if antNum in badAnts:
-#                 width=5
-#             if antNum == ants[0]:
-#                 if antNum in badAnts:
-#                     plt.plot(antPos[1],antPos[2],marker="h",markersize=40,color=color,alpha=0.5,
-#                             markeredgecolor='black',markeredgewidth=width, markerfacecolor="None")
-#                     plt.plot(antPos[1],antPos[2],marker="h",markersize=40,color=color,alpha=0.5,label=str(node),
-#                             markeredgecolor='black',markeredgewidth=0)
-#                 else:
-#                     plt.plot(antPos[1],antPos[2],marker="h",markersize=40,color=color,alpha=0.5,label=str(node),
-#                             markeredgecolor='black',markeredgewidth=width)
-#             else:
-#                 plt.plot(antPos[1],antPos[2],marker="h",markersize=40,color=color,alpha=0.5,
-#                         markeredgecolor='black',markeredgewidth=width)
-#             plt.text(antPos[1]-1.5,antPos[2],str(antNum))
     ants = geo_sysdef.read_antennas()
     nodes = geo_sysdef.read_nodes()
     firstNode = True
-    firstAnt = True
     for n, info in nodes.items():
+        firstAnt = True
         if n > 9:
             n = str(n)
         else:
             n = f'0{n}'
         if n in inclNodes:
+            color = cmap(round(20/N*i))
+            i += 1
             if firstNode:
                 plt.plot(info['E'], info['N'], 's', color='k',alpha=0.5,markersize=20,label='Node Box')
                 firstNode = False
             else:
                 plt.plot(info['E'], info['N'], 's', color='k',alpha=0.5,markersize=20)
-            ants_x = []
-            ants_y = []
             for a in info['ants']:
+                width = 0
+                if a in badAnts:
+                    width = 5
                 station = 'HH{}'.format(a)
                 try:
                     this_ant = ants[station]
                 except KeyError:
                     continue
-                ants_x.append(this_ant['E'])
-                ants_y.append(this_ant['N'])
+                x = this_ant['E']
+                y = this_ant['N']
                 if firstAnt:
-                    if antNum in badAnts:
-                    plt.annotate(a, [this_ant['E'], this_ant['N']])
-            plt.plot(ants_x, ants_y,'h',markersize=40,alpha=0.5,label=n)
-            i += 1
+                    if a in badAnts:
+                        plt.plot(x,y,marker="h",markersize=40,color=color,alpha=0.5,
+                            markeredgecolor='black',markeredgewidth=width, markerfacecolor="None")
+                        plt.plot(x,y,marker="h",markersize=40,color=color,alpha=0.5,label=str(n),
+                            markeredgecolor='black',markeredgewidth=0)
+                    else:
+                        plt.plot(x,y,marker="h",markersize=40,color=color,alpha=0.5,label=str(n),
+                            markeredgecolor='black',markeredgewidth=width)
+                    firstAnt = False
+                else:
+                    plt.plot(x,y,marker="h",markersize=40,color=color,alpha=0.5,
+                        markeredgecolor='black',markeredgewidth=width)
+                plt.annotate(a, [x-1, y])
     plt.legend(title='Node Number',bbox_to_anchor=(1.15,0.9),markerscale=0.5,labelspacing=1.5)
     
 def plot_lst_coverage(uvd):
