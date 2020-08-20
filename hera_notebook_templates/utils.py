@@ -474,7 +474,7 @@ def plot_lst_coverage(uvd):
     ax.set_xticks(xticks)
     ax.set_xticklabels(np.around(alltimes[xticks],2))
     ax.set_xlabel('JD')
-    ax.set_title('Time Coverage')
+    ax.set_title('LST (hours)')
     ax2 = ax.twiny()
     ax2.set_xticks(xticks)
     jds = alltimes[xticks]
