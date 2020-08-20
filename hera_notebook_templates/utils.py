@@ -457,17 +457,20 @@ def plot_lst_coverage(uvd):
     """
     lsts = uvd.lst_array*3.819719
     jds = np.unique(uvd.time_array)
-    alltimes = np.arange(np.min(jds),np.max(jds),jds[2]-jds[1])
-    truetimes = [np.min(np.abs(jds-jd))<=0.0001 for jd in alltimes]
+    alltimes = np.arange(np.floor(jds[0]),np.ceil(jds[0]),jds[2]-jds[1])
+    truetimes = [np.min(np.abs(jds-jd))<=0.001 for jd in alltimes]
     usetimes = np.tile(np.asarray(truetimes),(20,1))
 
-    fig = plt.figure(figsize=(16,2))
+    fig = plt.figure(figsize=(20,2))
     ax = fig.add_subplot()
     im = ax.imshow(usetimes, aspect='auto',cmap='RdYlGn',vmin=0,vmax=1)
     fig.colorbar(im)
     ax.set_yticklabels([])
     ax.set_yticks([])
-    xticks = [int(i) for i in np.linspace(0,len(alltimes)-1,8)]
+    if len(alltimes) <= 15:
+        xticks = [int(i) for i in np.linspace(0,len(alltimes)-1,len(alltimes))]
+    else:
+        xticks = [int(i) for i in np.linspace(0,len(alltimes)-1,14)]
     ax.set_xticks(xticks)
     ax.set_xticklabels(np.around(alltimes[xticks],2))
     ax.set_xlabel('JD')
@@ -482,6 +485,7 @@ def plot_lst_coverage(uvd):
         lstlabels.append(t.sidereal_time('mean').hour)
     ax2.set_xticklabels(np.around(lstlabels,2))
     ax2.set_label('LST (hours)')
+    ax2.tick_params(labelsize=12)
     
 def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
     """Plot Even/Odd visibility ratio waterfall.
