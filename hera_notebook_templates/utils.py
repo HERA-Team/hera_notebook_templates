@@ -368,7 +368,7 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
     fig.suptitle('Visibility spectra (JD: %i)' % (JD))
     fig.subplots_adjust(top=.94,wspace=0.05)
     
-def plot_antenna_positions(uv, badAnts=[], use_ants='auto'):
+def plot_antenna_positions(uv, badAnts=[],flaggedAnts=[],use_ants='auto'):
     """
     Plots the positions of all antennas that have data, colored by node.
     
@@ -378,11 +378,13 @@ def plot_antenna_positions(uv, badAnts=[], use_ants='auto'):
         Observation to extract antenna numbers and positions from
     badAnts: List
         A list of flagged or bad antennas. These will be outlined in black in the plot. 
+    flaggedAnts: Dict
+        A dict of antennas flagged by ant_metrics with value corresponding to color in ant_metrics plot
     """
     
     plt.figure(figsize=(12,10))
     nodes, antDict, inclNodes = generate_nodeDict(uv)
-    N = len(nodes)
+    N = len(inclNodes)
     cmap = plt.get_cmap('tab20')
     i = 0
     nodePos = geo_sysdef.read_nodes()
@@ -406,8 +408,11 @@ def plot_antenna_positions(uv, badAnts=[], use_ants='auto'):
                 plt.plot(info['E'], info['N'], 's', color='k',alpha=0.5,markersize=20)
             for a in info['ants']:
                 width = 0
+                widthf = 0
                 if a in badAnts:
-                    width = 5
+                    width = 3
+                if a in flaggedAnts.keys():
+                    widthf = 6
                 station = 'HH{}'.format(a)
                 try:
                     this_ant = ants[station]
@@ -416,18 +421,28 @@ def plot_antenna_positions(uv, badAnts=[], use_ants='auto'):
                 x = this_ant['E']
                 y = this_ant['N']
                 if firstAnt:
-                    if a in badAnts:
-                        plt.plot(x,y,marker="h",markersize=40,color=color,alpha=0.5,
-                            markeredgecolor='black',markeredgewidth=width, markerfacecolor="None")
+                    if a in badAnts or a in flaggedAnts.keys():
                         plt.plot(x,y,marker="h",markersize=40,color=color,alpha=0.5,label=str(n),
                             markeredgecolor='black',markeredgewidth=0)
+                        if a in flaggedAnts.keys():
+                            plt.plot(x,y,marker="h",markersize=40,color=color,
+                                markeredgecolor=flaggedAnts[a],markeredgewidth=widthf, markerfacecolor="None")
+                        if a in badAnts:
+                            plt.plot(x,y,marker="h",markersize=40,color=color,alpha=0.5,
+                                markeredgecolor='black',markeredgewidth=width, markerfacecolor="None")
                     else:
                         plt.plot(x,y,marker="h",markersize=40,color=color,alpha=0.5,label=str(n),
                             markeredgecolor='black',markeredgewidth=width)
                     firstAnt = False
                 else:
                     plt.plot(x,y,marker="h",markersize=40,color=color,alpha=0.5,
-                        markeredgecolor='black',markeredgewidth=width)
+                        markeredgecolor='black',markeredgewidth=0)
+                    if a in flaggedAnts.keys():
+                        plt.plot(x,y,marker="h",markersize=40,color=color,
+                            markeredgecolor=flaggedAnts[a],markeredgewidth=widthf, markerfacecolor="None")
+                    if a in badAnts:
+                        plt.plot(x,y,marker="h",markersize=40,color=color,
+                            markeredgecolor='black',markeredgewidth=width, markerfacecolor="None")
                 plt.annotate(a, [x-1, y])
     plt.legend(title='Node Number',bbox_to_anchor=(1.15,0.9),markerscale=0.5,labelspacing=1.5)
     
