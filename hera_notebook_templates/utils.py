@@ -569,7 +569,7 @@ def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logSc
     nantsTotal = len(uv.antenna_numbers)
     power = np.empty((nantsTotal,nantsTotal))
     fig, axs = plt.subplots(1,len(pols),figsize=(16,16))
-    dirs = ['NS','EW']
+    dirs = ['EW','NS']
     loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
     jd = uv.time_array[0]
     t = Time(jd,format='jd',location=loc)
