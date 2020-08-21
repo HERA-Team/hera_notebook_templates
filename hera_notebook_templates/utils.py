@@ -97,7 +97,7 @@ def plot_autos(uvdx, uvdy):
                 ax.set_title(str(ants[k]), fontsize=14)
             
                 if k == 0:
-                    ax.legend([px, py], ['East1', 'North1'])
+                    ax.legend([px, py], ['North1', 'East1'])
                     #ax.legend([px, py, px2, py2, px3, py3], ['East1', 'North1', 'East2', 'North2', 'East3', 'North3'], fontsize=12)
             
             else:
@@ -135,9 +135,9 @@ def plot_wfs(uvd, pol):
     
     fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2,Nside*2))
     if pol == 0:
-        fig.suptitle("waterfalls from {0} -- {1} East Polarization".format(times[0], times[-1]), fontsize=14)
-    else:
         fig.suptitle("waterfalls from {0} -- {1} North Polarization".format(times[0], times[-1]), fontsize=14)
+    else:
+        fig.suptitle("waterfalls from {0} -- {1} East Polarization".format(times[0], times[-1]), fontsize=14)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.subplots_adjust(left=.1, bottom=.1, right=.9, top=.9, wspace=0.05, hspace=0.2)
 
@@ -536,9 +536,11 @@ def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.5):
                 odd = (s - d)/2
                 odd = np.divide(odd,np.abs(odd))
                 product = np.multiply(even,np.conj(odd))
-                data[pol][i,j] = np.abs(np.nanmean(product))
-                thisAnt.append(np.abs(np.nanmean(product)))
-            if np.nanmedian(thisAnt) < badThresh and antnumsAll[i] not in badAnts:
+#                 data[pol][i,j] = np.abs(np.nanmean(product))
+#                 thisAnt.append(np.abs(np.nanmean(product)))
+                data[pol][i,j] = np.abs(np.mean(product))
+                thisAnt.append(np.abs(np.mean(product)))
+            if np.nanmean(thisAnt) < badThresh and antnumsAll[i] not in badAnts:
                 badAnts.append(antnumsAll[i])
     return data, badAnts
 
@@ -569,7 +571,7 @@ def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logSc
     nantsTotal = len(uv.antenna_numbers)
     power = np.empty((nantsTotal,nantsTotal))
     fig, axs = plt.subplots(1,len(pols),figsize=(16,16))
-    dirs = ['EW','NS']
+    dirs = ['NS','EW']
     loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
     jd = uv.time_array[0]
     t = Time(jd,format='jd',location=loc)
