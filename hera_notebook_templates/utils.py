@@ -307,24 +307,33 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
         Polarizations to plot. Can include any polarization strings accepted by pyuvdata.
     """
     
-    fig, axs = plt.subplots(4,2,figsize=(12,16))
+    pol_labels = ['NS','EW']
     plt.subplots_adjust(wspace=0.25)
     uv = UVData()
-    if use_ants == 'auto':
-        uv.read_uvh5(file)
-    else:
-        uv.read_uvh5(file, antenna_nums=use_ants)
+    uv.read_uvh5(file)
     h = cm_hookup.Hookup()
     x = h.get_hookup('HH')
-    baseline_groups = get_baseline_groups(uv,use_ants=use_ants)
+    baseline_groups = get_baseline_groups(uv,use_ants="auto")
     freqs = uv.freq_array[0]/1000000
     loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
     obstime_start = Time(uv.time_array[0],format='jd',location=loc)
     startTime = obstime_start.sidereal_time('mean').hour
     JD = int(obstime_start.jd)
     j = 0
+    fig, axs = plt.subplots(len(baseline_groups),2,figsize=(12,4*len(baseline_groups)))
     for orientation in baseline_groups:
         bls = baseline_groups[orientation]
+        usable = 0
+        for i in range(len(bls)):
+            ants = uv.baseline_to_antnums(bls[i])
+            if ants[0] in badAnts or ants[1] in badAnts:
+                continue
+            if ants[0] in use_ants and ants[1] in use_ants:
+                usable += 1
+        if usable <=3:
+            use_all = True
+        else:
+            use_all = False
         for p in range(len(pols)):
             inter=False
             intra=False
@@ -333,7 +342,7 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
                 ants = uv.baseline_to_antnums(bls[i])
                 ant1 = ants[0]
                 ant2 = ants[1]
-                if (ant1 in use_ants and ant2 in use_ants) or use_ants == 'auto':
+                if (ant1 in use_ants and ant2 in use_ants) or use_all == True:
                     key1 = 'HH%i:A' % (ant1)
                     n1 = x[key1].get_part_from_type('node')['E<ground'][1:]
                     key2 = 'HH%i:A' % (ant2)
@@ -343,7 +352,7 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
                     auto2 = np.mean(np.abs(uv.get_data(ant2,ant2,pol)),0)
                     norm = np.sqrt(np.multiply(auto1,auto2))
                     dat = np.divide(dat,norm)
-                    if ant1 in badAnts or ant2 in badAnts:
+                    if use_all == False and (ant1 in badAnts or ant2 in badAnts):
                         continue
                     if n1 == n2:
                         if intra is False:
@@ -358,10 +367,10 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
                         else:
                             axs[j][p].plot(freqs,dat,color='red')
                     axs[j][p].set_yscale('log')
-                    axs[j][p].set_title('%s: %s pol' % (orientation,pols[p]))
+                    axs[j][p].set_title('%s: %s pol' % (orientation,pol_labels[p]))
                     if j == 0:
                         axs[0][0].legend()
-                        axs[3][p].set_xlabel('Frequency (MHz)')
+                        axs[len(baseline_groups)-1][p].set_xlabel('Frequency (MHz)')
         axs[j][0].set_ylabel('log(|Vij|)')
         axs[j][1].set_yticks([])
         j += 1
@@ -740,7 +749,7 @@ def get_baseline_groups(uv, bl_groups=[(14,0,'14m E-W'),(29,0,'29m E-W'),(14,-11
             if np.abs(lengths[i]-group[0])<1:
                 ant1 = uv.baseline_to_antnums(bl[0])[0]
                 ant2 = uv.baseline_to_antnums(bl[0])[1]
-                if (ant1 in use_ants and ant2 in use_ants) or use_ants == 'auto':
+                if use_ants == 'auto' or (ant1 in use_ants and ant2 in use_ants):
                     antPos1 = uv.antenna_positions[np.argwhere(uv.get_ants() == ant1)]
                     antPos2 = uv.antenna_positions[np.argwhere(uv.get_ants() == ant2)]
                     disp = (antPos2-antPos1)[0][0]
