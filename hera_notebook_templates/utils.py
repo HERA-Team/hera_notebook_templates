@@ -579,8 +579,6 @@ def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.5):
                 odd = (s - d)/2
                 odd = np.divide(odd,np.abs(odd))
                 product = np.multiply(even,np.conj(odd))
-#                 data[pol][i,j] = np.abs(np.nanmean(product))
-#                 thisAnt.append(np.abs(np.nanmean(product)))
                 data[pol][i,j] = np.abs(np.mean(product))
                 thisAnt.append(np.abs(np.mean(product)))
             if np.nanmean(thisAnt) < badThresh and antnumsAll[i] not in badAnts:
