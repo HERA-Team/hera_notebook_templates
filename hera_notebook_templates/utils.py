@@ -232,7 +232,7 @@ def plot_closure(uvd, triad_length, pol):
     plt.imshow(closure_ph, aspect='auto', rasterized=True,
                            interpolation='nearest', cmap = 'twilight')
     
-def plotNodeAveragedSummary(uv,HHfiles,jd,pols=['xx','yy'],baseline_groups=[],removeBadAnts=False):
+def plotNodeAveragedSummary(uv,HHfiles,jd,use_ants,pols=['xx','yy'],baseline_groups=[],removeBadAnts=False):
     """
     Plots a summary of baseline correlations throughout a night for each baseline group specified, separated into inter-node and intra-node baselines, for each polarization specified.
     
@@ -260,7 +260,7 @@ def plotNodeAveragedSummary(uv,HHfiles,jd,pols=['xx','yy'],baseline_groups=[],re
         baseline_groups = [(14,0,'14m E-W'),(14,-11,'14m NW-SE'),(14,11,'14m SW-NE'),(29,0,'29m E-W'),(29,22,'29m SW-NE'),
                        (44,0,'44m E-W'),(58.5,0,'58m E-W'),(73,0,'73m E-W'),(87.6,0,'88m E-W'),
                       (102.3,0,'102m E-W')]
-    nodeMedians,lsts,badAnts=get_correlation_baseline_evolutions(uv,HHfiles,jd,
+    nodeMedians,lsts,badAnts=get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants,
                                                                 bl_type=baseline_groups,removeBadAnts=removeBadAnts)
     if len(lsts)>1:
         fig,axs = plt.subplots(len(pols),2,figsize=(16,16))
@@ -291,7 +291,7 @@ def plotNodeAveragedSummary(uv,HHfiles,jd,pols=['xx','yy'],baseline_groups=[],re
         print('#############################################################################')
     return badAnts
     
-def plotVisibilitySpectra(file,jd,badAnts=[],pols=['xx','yy']):
+def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
     """
     Plots visibility amplitude spectra for a set of redundant baselines, labeled by inter vs. intranode baselines.
     
@@ -310,10 +310,13 @@ def plotVisibilitySpectra(file,jd,badAnts=[],pols=['xx','yy']):
     fig, axs = plt.subplots(4,2,figsize=(12,16))
     plt.subplots_adjust(wspace=0.25)
     uv = UVData()
-    uv.read_uvh5(file)
+    if use_ants == 'auto':
+        uv.read_uvh5(file)
+    else:
+        uv.read_uvh5(file, antenna_nums=use_ants)
     h = cm_hookup.Hookup()
     x = h.get_hookup('HH')
-    baseline_groups = get_baseline_groups(uv)
+    baseline_groups = get_baseline_groups(uv,use_ants=use_ants)
     freqs = uv.freq_array[0]/1000000
     loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
     obstime_start = Time(uv.time_array[0],format='jd',location=loc)
@@ -330,41 +333,42 @@ def plotVisibilitySpectra(file,jd,badAnts=[],pols=['xx','yy']):
                 ants = uv.baseline_to_antnums(bls[i])
                 ant1 = ants[0]
                 ant2 = ants[1]
-                key1 = 'HH%i:A' % (ant1)
-                n1 = x[key1].get_part_from_type('node')['E<ground'][1:]
-                key2 = 'HH%i:A' % (ant2)
-                n2 = x[key2].get_part_from_type('node')['E<ground'][1:]
-                dat = np.mean(np.abs(uv.get_data(ant1,ant2,pol)),0)
-                auto1 = np.mean(np.abs(uv.get_data(ant1,ant1,pol)),0)
-                auto2 = np.mean(np.abs(uv.get_data(ant2,ant2,pol)),0)
-                norm = np.sqrt(np.multiply(auto1,auto2))
-                dat = np.divide(dat,norm)
-                if ant1 in badAnts or ant2 in badAnts:
-                    continue
-                if n1 == n2:
-                    if intra is False:
-                        axs[j][p].plot(freqs,dat,color='blue',label='intranode')
-                        intra=True
+                if (ant1 in use_ants and ant2 in use_ants) or use_ants == 'auto':
+                    key1 = 'HH%i:A' % (ant1)
+                    n1 = x[key1].get_part_from_type('node')['E<ground'][1:]
+                    key2 = 'HH%i:A' % (ant2)
+                    n2 = x[key2].get_part_from_type('node')['E<ground'][1:]
+                    dat = np.mean(np.abs(uv.get_data(ant1,ant2,pol)),0)
+                    auto1 = np.mean(np.abs(uv.get_data(ant1,ant1,pol)),0)
+                    auto2 = np.mean(np.abs(uv.get_data(ant2,ant2,pol)),0)
+                    norm = np.sqrt(np.multiply(auto1,auto2))
+                    dat = np.divide(dat,norm)
+                    if ant1 in badAnts or ant2 in badAnts:
+                        continue
+                    if n1 == n2:
+                        if intra is False:
+                            axs[j][p].plot(freqs,dat,color='blue',label='intranode')
+                            intra=True
+                        else:
+                            axs[j][p].plot(freqs,dat,color='blue')
                     else:
-                        axs[j][p].plot(freqs,dat,color='blue')
-                else:
-                    if inter is False:
-                        axs[j][p].plot(freqs,dat,color='red',label='internode')
-                        inter=True
-                    else:
-                        axs[j][p].plot(freqs,dat,color='red')
-                axs[j][p].set_yscale('log')
-                axs[j][p].set_title('%s: %s pol' % (orientation,pols[p]))
-                if j == 0:
-                    axs[0][0].legend()
-                    axs[3][p].set_xlabel('Frequency (MHz)')
+                        if inter is False:
+                            axs[j][p].plot(freqs,dat,color='red',label='internode')
+                            inter=True
+                        else:
+                            axs[j][p].plot(freqs,dat,color='red')
+                    axs[j][p].set_yscale('log')
+                    axs[j][p].set_title('%s: %s pol' % (orientation,pols[p]))
+                    if j == 0:
+                        axs[0][0].legend()
+                        axs[3][p].set_xlabel('Frequency (MHz)')
         axs[j][0].set_ylabel('log(|Vij|)')
         axs[j][1].set_yticks([])
         j += 1
     fig.suptitle('Visibility spectra (JD: %i)' % (JD))
     fig.subplots_adjust(top=.94,wspace=0.05)
     
-def plot_antenna_positions(uv, badAnts=[]):
+def plot_antenna_positions(uv, badAnts=[], use_ants='auto'):
     """
     Plots the positions of all antennas that have data, colored by node.
     
@@ -456,7 +460,7 @@ def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
     -------
     None
     """
-    nants = len(uvd_sum.antenna_numbers)
+    nants = len(uvd_sum.get_ants())
     freqs = uvd_sum.freq_array[0]*1e-6
     lsts = uvd_sum.lst_array*3.819719
     sm = np.abs(uvd_sum.data_array[:,0,:,0])
@@ -517,7 +521,7 @@ def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.5):
         return None
     if nodes=='auto':
         nodeDict, antDict, inclNodes = generate_nodeDict(sm)
-    nants = len(sm.antenna_numbers)
+    nants = len(sm.get_ants())
     data = {}
     antnumsAll = sort_antennas(sm)
     badAnts = []
@@ -568,7 +572,7 @@ def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logSc
     """
     if nodes=='auto':
         nodeDict, antDict, inclNodes = generate_nodeDict(uv)
-    nantsTotal = len(uv.antenna_numbers)
+    nantsTotal = len(uv.get_ants())
     power = np.empty((nantsTotal,nantsTotal))
     fig, axs = plt.subplots(1,len(pols),figsize=(16,16))
     dirs = ['NS','EW']
@@ -654,7 +658,8 @@ def get_hourly_files(uv, HHfiles, jd):
                 use_files.append(file)
     return use_files, use_lsts
 
-def get_baseline_groups(uv, bl_groups=[(14,0,'14m E-W'),(29,0,'29m E-W'),(14,-11,'14m NW-SE'),(14,11,'14m SW-NE')]):
+def get_baseline_groups(uv, bl_groups=[(14,0,'14m E-W'),(29,0,'29m E-W'),(14,-11,'14m NW-SE'),(14,11,'14m SW-NE')],
+                       use_ants='auto'):
     """
     Generate dictionary containing baseline groups.
     
@@ -679,16 +684,17 @@ def get_baseline_groups(uv, bl_groups=[(14,0,'14m E-W'),(29,0,'29m E-W'),(14,-11
             if np.abs(lengths[i]-group[0])<1:
                 ant1 = uv.baseline_to_antnums(bl[0])[0]
                 ant2 = uv.baseline_to_antnums(bl[0])[1]
-                antPos1 = uv.antenna_positions[np.argwhere(uv.antenna_numbers == ant1)]
-                antPos2 = uv.antenna_positions[np.argwhere(uv.antenna_numbers == ant2)]
-                disp = (antPos2-antPos1)[0][0]
-                if np.abs(disp[2]-group[1])<0.5:
-                    bls[group[2]] = bl
+                if (ant1 in use_ants and ant2 in use_ants) or use_ants == 'auto':
+                    antPos1 = uv.antenna_positions[np.argwhere(uv.get_ants() == ant1)]
+                    antPos2 = uv.antenna_positions[np.argwhere(uv.get_ants() == ant2)]
+                    disp = (antPos2-antPos1)[0][0]
+                    if np.abs(disp[2]-group[1])<0.5:
+                        bls[group[2]] = bl
     return bls
 
 
     
-def get_correlation_baseline_evolutions(uv,HHfiles,jd,badThresh=0.35,pols=['xx','yy'],bl_type=(14,0,'14m E-W'),
+def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='auto',badThresh=0.35,pols=['xx','yy'],bl_type=(14,0,'14m E-W'),
                                         removeBadAnts=False, plotMatrix=True):
     """
     Calculates the average correlation metric for a set of redundant baseline groups at one hour intervals throughout a night of observation.
@@ -722,6 +728,8 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,badThresh=0.35,pols=['xx',
         Antenna numbers flagged as bad based on badThresh parameter.
     """
     files, lsts = get_hourly_files(uv, HHfiles, jd)
+    if use_ants == 'auto':
+        use_ants = uv.get_ants()
     nTimes = len(files)
     plotTimes = [0,nTimes-1,nTimes//2]
     nodeDict, antDict, inclNodes = generate_nodeDict(uv)
@@ -734,16 +742,17 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,badThresh=0.35,pols=['xx',
         sm = UVData()
         df = UVData()
         try:
-            sm.read(file, skip_bad_files=True)
+            sm.read(file, skip_bad_files=True, antenna_nums=use_ants)
         except:
             print(f'WARNING: unable to read {file}')
             continue
         try:
             dffile = '%sdiff%s' % (file[0:-8],file[-5:])
-            df.read(dffile, skip_bad_files=True)
+            df.read(dffile, skip_bad_files=True, antenna_nums=use_ants)
         except:
             print(f'WARNING: unable to read {dffile}')
             continue
+        print(sm.get_ants())
         matrix, badAnts = calcEvenOddAmpMatrix(sm,df,nodes='auto',badThresh=badThresh)
         if plotMatrix is True and f in plotTimes:
             plotCorrMatrix(sm, matrix, nodes='auto')
@@ -763,7 +772,7 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,badThresh=0.35,pols=['xx',
                 for pol in pols:
                     result[group[2]]['inter'][pol] = []
                     result[group[2]]['intra'][pol] = []
-            bls = get_baseline_type(uv,bl_type=group)
+            bls = get_baseline_type(uv,bl_type=group,use_ants=use_ants)
             if bls == None:
                 print(f'No baselines of type {group}')
                 continue
@@ -918,7 +927,7 @@ def getIntranodeMedians(uv, data, pols=['xx','yy'],badAnts=[],baselines='all'):
         start += len(nodeDict[node]['ants'])
     return nodeMeans
 
-def get_baseline_type(uv,bl_type=(14,0,'14m E-W')):
+def get_baseline_type(uv,bl_type=(14,0,'14m E-W'),use_ants='auto'):
     """
     Parameters:
     ----------
@@ -939,11 +948,12 @@ def get_baseline_type(uv,bl_type=(14,0,'14m E-W')):
         if np.abs(lengths[i]-bl_type[0])<1:
             ant1 = uv.baseline_to_antnums(bl[0])[0]
             ant2 = uv.baseline_to_antnums(bl[0])[1]
-            antPos1 = uv.antenna_positions[np.argwhere(uv.antenna_numbers == ant1)]
-            antPos2 = uv.antenna_positions[np.argwhere(uv.antenna_numbers == ant2)]
-            disp = (antPos2-antPos1)[0][0]
-            if np.abs(disp[2]-bl_type[1])<0.5:
-                return bl
+            if (ant1 in use_ants and ant2 in use_ants) or use_ants == 'auto':
+                antPos1 = uv.antenna_positions[np.argwhere(uv.antenna_numbers == ant1)]
+                antPos2 = uv.antenna_positions[np.argwhere(uv.antenna_numbers == ant2)]
+                disp = (antPos2-antPos1)[0][0]
+                if np.abs(disp[2]-bl_type[1])<0.5:
+                    return bl
     return None
 
 def generate_nodeDict(uv):
@@ -965,7 +975,7 @@ def generate_nodeDict(uv):
         Nodes that have hooked up antennas.
     """
     
-    antnums = uv.antenna_numbers
+    antnums = uv.get_ants()
     h = cm_hookup.Hookup()
     x = h.get_hookup('HH')
     nodes = {}
