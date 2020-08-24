@@ -401,11 +401,6 @@ def plot_antenna_positions(uv, badAnts=[],flaggedAnts=[],use_ants='auto'):
         if n in inclNodes:
             color = cmap(round(20/N*i))
             i += 1
-            if firstNode:
-                plt.plot(info['E'], info['N'], 's', color='k',alpha=0.5,markersize=20,label='Node Box')
-                firstNode = False
-            else:
-                plt.plot(info['E'], info['N'], 's', color='k',alpha=0.5,markersize=20)
             for a in info['ants']:
                 width = 0
                 widthf = 0
@@ -420,9 +415,18 @@ def plot_antenna_positions(uv, badAnts=[],flaggedAnts=[],use_ants='auto'):
                     continue
                 x = this_ant['E']
                 y = this_ant['N']
+                if a in use_ants:
+                    falpha = 0.5
+                else:
+                    falpha = 0.1
                 if firstAnt:
                     if a in badAnts or a in flaggedAnts.keys():
-                        plt.plot(x,y,marker="h",markersize=40,color=color,alpha=0.5,label=str(n),
+                        if falpha == 0.1:
+                            plt.plot(x,y,marker="h",markersize=40,color=color,alpha=falpha,
+                                markeredgecolor='black',markeredgewidth=0)
+                            plt.annotate(a, [x-1, y])
+                            continue
+                        plt.plot(x,y,marker="h",markersize=40,color=color,alpha=falpha,label=str(n),
                             markeredgecolor='black',markeredgewidth=0)
                         if a in flaggedAnts.keys():
                             plt.plot(x,y,marker="h",markersize=40,color=color,
@@ -431,11 +435,16 @@ def plot_antenna_positions(uv, badAnts=[],flaggedAnts=[],use_ants='auto'):
                             plt.plot(x,y,marker="h",markersize=40,color=color,alpha=0.5,
                                 markeredgecolor='black',markeredgewidth=width, markerfacecolor="None")
                     else:
-                        plt.plot(x,y,marker="h",markersize=40,color=color,alpha=0.5,label=str(n),
+                        if falpha == 0.1:
+                            plt.plot(x,y,marker="h",markersize=40,color=color,alpha=falpha,
+                                markeredgecolor='black',markeredgewidth=0)
+                            plt.annotate(a, [x-1, y])
+                            continue
+                        plt.plot(x,y,marker="h",markersize=40,color=color,alpha=falpha,label=str(n),
                             markeredgecolor='black',markeredgewidth=width)
                     firstAnt = False
                 else:
-                    plt.plot(x,y,marker="h",markersize=40,color=color,alpha=0.5,
+                    plt.plot(x,y,marker="h",markersize=40,color=color,alpha=falpha,
                         markeredgecolor='black',markeredgewidth=0)
                     if a in flaggedAnts.keys():
                         plt.plot(x,y,marker="h",markersize=40,color=color,
@@ -444,6 +453,11 @@ def plot_antenna_positions(uv, badAnts=[],flaggedAnts=[],use_ants='auto'):
                         plt.plot(x,y,marker="h",markersize=40,color=color,
                             markeredgecolor='black',markeredgewidth=width, markerfacecolor="None")
                 plt.annotate(a, [x-1, y])
+            if firstNode:
+                plt.plot(info['E'], info['N'], '*', color='gold',markersize=20,label='Node Box')
+                firstNode = False
+            else:
+                plt.plot(info['E'], info['N'], '*', color='gold',markersize=20)
     plt.legend(title='Node Number',bbox_to_anchor=(1.15,0.9),markerscale=0.5,labelspacing=1.5)
     
 def plot_lst_coverage(uvd):
