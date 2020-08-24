@@ -808,7 +808,6 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='auto',badThresh=
         except:
             print(f'WARNING: unable to read {dffile}')
             continue
-        print(sm.get_ants())
         matrix, badAnts = calcEvenOddAmpMatrix(sm,df,nodes='auto',badThresh=badThresh)
         if plotMatrix is True and f in plotTimes:
             plotCorrMatrix(sm, matrix, nodes='auto')
