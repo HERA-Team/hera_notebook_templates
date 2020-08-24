@@ -515,20 +515,25 @@ def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
     """
     nants = len(uvd_sum.get_ants())
     freqs = uvd_sum.freq_array[0]*1e-6
-    lsts = uvd_sum.lst_array*3.819719
+    nfreqs = len(freqs)
+    lsts = np.unique(uvd_sum.lst_array*3.819719)
     sm = np.abs(uvd_sum.data_array[:,0,:,0])
     df = np.abs(uvd_diff.data_array[:,0,:,0])
+    sm = np.r_[sm, np.nan + np.zeros((-len(sm) % nants,len(freqs)))]
+    sm = np.nanmean(sm.reshape(-1,nants,nfreqs), axis=1)
+    df = np.r_[df, np.nan + np.zeros((-len(df) % nants,len(freqs)))]
+    df = np.nanmean(df.reshape(-1,nants,nfreqs), axis=1)
 
     evens = (sm + df)/2
     odds = (sm - df)/2
     rat = np.divide(evens,odds)
-    print(rat)
+    rat = np.nan_to_num(rat)
     fig = plt.figure(figsize=(14,3))
     ax = fig.add_subplot()
-#     my_cmap = copy.deepcopy(matplotlib.cm.get_cmap('viridis'))
-#     my_cmap.set_under('w')
-#     my_cmap.set_over('r')
-    im = plt.imshow(rat,aspect='auto',vmin=0.5,vmax=2)
+    my_cmap = copy.deepcopy(matplotlib.cm.get_cmap('viridis'))
+    my_cmap.set_under('r')
+    my_cmap.set_over('r')
+    im = plt.imshow(rat,aspect='auto',vmin=0.5,vmax=2,cmap=my_cmap)
     fig.colorbar(im)
     ax.set_title('Even/odd Visibility Ratio')
     ax.set_xlabel('Frequency (MHz)')
@@ -541,7 +546,7 @@ def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
     ax.set_xticklabels(np.around(freqs[xticks], 0))
     i = 192
     while i < len(freqs):
-        ax.axvline(i,color='r')
+        ax.axvline(i,color='w')
         i += 192
     return rat
     
