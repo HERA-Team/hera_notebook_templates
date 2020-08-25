@@ -441,7 +441,7 @@ def plot_antenna_positions(uv, badAnts=[],flaggedAnts=[],use_ants='auto'):
                             plt.plot(x,y,marker="h",markersize=40,color=color,
                                 markeredgecolor=flaggedAnts[a],markeredgewidth=widthf, markerfacecolor="None")
                         if a in badAnts:
-                            plt.plot(x,y,marker="h",markersize=40,color=color,alpha=0.5,
+                            plt.plot(x,y,marker="h",markersize=40,color=color,
                                 markeredgecolor='black',markeredgewidth=width, markerfacecolor="None")
                     else:
                         if falpha == 0.1:
@@ -463,11 +463,14 @@ def plot_antenna_positions(uv, badAnts=[],flaggedAnts=[],use_ants='auto'):
                             markeredgecolor='black',markeredgewidth=width, markerfacecolor="None")
                 plt.annotate(a, [x-1, y])
             if firstNode:
-                plt.plot(info['E'], info['N'], '*', color='gold',markersize=20,label='Node Box')
+                plt.plot(info['E'], info['N'], '*', color='gold',markersize=20,label='Node Box',
+                        markeredgecolor='k',markeredgewidth=1)
                 firstNode = False
             else:
-                plt.plot(info['E'], info['N'], '*', color='gold',markersize=20)
+                plt.plot(info['E'], info['N'], '*', color='gold',markersize=20,markeredgecolor='k',markeredgewidth=1)
     plt.legend(title='Node Number',bbox_to_anchor=(1.15,0.9),markerscale=0.5,labelspacing=1.5)
+    plt.xlabel('East')
+    plt.ylabel('North')
     
 def plot_lst_coverage(uvd):
     """
