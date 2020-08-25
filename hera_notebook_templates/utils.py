@@ -414,7 +414,7 @@ def plot_antenna_positions(uv, badAnts=[],flaggedAnts=[],use_ants='auto'):
                 width = 0
                 widthf = 0
                 if a in badAnts:
-                    width = 3
+                    width = 2
                 if a in flaggedAnts.keys():
                     widthf = 6
                 station = 'HH{}'.format(a)
