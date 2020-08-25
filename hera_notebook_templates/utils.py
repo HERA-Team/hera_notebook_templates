@@ -460,10 +460,10 @@ def plot_antenna_positions(uv, badAnts=[],flaggedAnts=[],use_ants='auto'):
                 else:
                     plt.plot(x,y,marker="h",markersize=40,color=color,alpha=falpha,
                         markeredgecolor='black',markeredgewidth=0)
-                    if a in flaggedAnts.keys():
+                    if a in flaggedAnts.keys() and a in use_ants:
                         plt.plot(x,y,marker="h",markersize=40,color=color,
                             markeredgecolor=flaggedAnts[a],markeredgewidth=widthf, markerfacecolor="None")
-                    if a in badAnts:
+                    if a in badAnts and a in use_ants:
                         plt.plot(x,y,marker="h",markersize=40,color=color,
                             markeredgecolor='black',markeredgewidth=width, markerfacecolor="None")
                 plt.annotate(a, [x-1, y])
