@@ -330,8 +330,11 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
                 continue
             if ants[0] in use_ants and ants[1] in use_ants:
                 usable += 1
-        if usable <=3:
+        if usable <=4:
             use_all = True
+            print(f'Note: not enough baselines of orientation {orientation} - using all available baselines')
+        if usable <= 10:
+            print(f'Note: only a small number of baselines of orientation {orientation} are available')
         else:
             use_all = False
         for p in range(len(pols)):
@@ -352,7 +355,7 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
                     auto2 = np.mean(np.abs(uv.get_data(ant2,ant2,pol)),0)
                     norm = np.sqrt(np.multiply(auto1,auto2))
                     dat = np.divide(dat,norm)
-                    if use_all == False and (ant1 in badAnts or ant2 in badAnts):
+                    if ant1 in badAnts or ant2 in badAnts:
                         continue
                     if n1 == n2:
                         if intra is False:
@@ -369,8 +372,10 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
                     axs[j][p].set_yscale('log')
                     axs[j][p].set_title('%s: %s pol' % (orientation,pol_labels[p]))
                     if j == 0:
-                        axs[0][0].legend()
+#                         axs[0][0].legend()
                         axs[len(baseline_groups)-1][p].set_xlabel('Frequency (MHz)')
+            if p == 0:
+                axs[j][p].legend()
         axs[j][0].set_ylabel('log(|Vij|)')
         axs[j][1].set_yticks([])
         j += 1
@@ -753,8 +758,8 @@ def get_baseline_groups(uv, bl_groups=[(14,0,'14m E-W'),(29,0,'29m E-W'),(14,-11
                 ant1 = uv.baseline_to_antnums(bl[0])[0]
                 ant2 = uv.baseline_to_antnums(bl[0])[1]
                 if use_ants == 'auto' or (ant1 in use_ants and ant2 in use_ants):
-                    antPos1 = uv.antenna_positions[np.argwhere(uv.get_ants() == ant1)]
-                    antPos2 = uv.antenna_positions[np.argwhere(uv.get_ants() == ant2)]
+                    antPos1 = uv.antenna_positions[np.argwhere(uv.antenna_numbers == ant1)]
+                    antPos2 = uv.antenna_positions[np.argwhere(uv.antenna_numbers == ant2)]
                     disp = (antPos2-antPos1)[0][0]
                     if np.abs(disp[2]-group[1])<0.5:
                         bls[group[2]] = bl
