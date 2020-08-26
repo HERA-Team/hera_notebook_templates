@@ -232,7 +232,8 @@ def plot_closure(uvd, triad_length, pol):
     plt.imshow(closure_ph, aspect='auto', rasterized=True,
                            interpolation='nearest', cmap = 'twilight')
     
-def plotNodeAveragedSummary(uv,HHfiles,jd,use_ants,pols=['xx','yy'],baseline_groups=[],removeBadAnts=False):
+def plotNodeAveragedSummary(uv,HHfiles,jd,use_ants,pols=['xx','yy'],mat_pols=['xx','yy'],
+                            baseline_groups=[],removeBadAnts=False):
     """
     Plots a summary of baseline correlations throughout a night for each baseline group specified, separated into inter-node and intra-node baselines, for each polarization specified.
     
@@ -260,8 +261,9 @@ def plotNodeAveragedSummary(uv,HHfiles,jd,use_ants,pols=['xx','yy'],baseline_gro
         baseline_groups = [(14,0,'14m E-W'),(14,-11,'14m NW-SE'),(14,11,'14m SW-NE'),(29,0,'29m E-W'),(29,22,'29m SW-NE'),
                        (44,0,'44m E-W'),(58.5,0,'58m E-W'),(73,0,'73m E-W'),(87.6,0,'88m E-W'),
                       (102.3,0,'102m E-W')]
-    nodeMedians,lsts,badAnts=get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants,
+    nodeMedians,lsts,badAnts=get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants,pols=pols,mat_pols=mat_pols,
                                                                 bl_type=baseline_groups,removeBadAnts=removeBadAnts)
+    pols = ['xx','yy']
     if len(lsts)>1:
         fig,axs = plt.subplots(len(pols),2,figsize=(16,16))
         maxLength = 0
@@ -647,47 +649,60 @@ def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logSc
         nodeDict, antDict, inclNodes = generate_nodeDict(uv)
     nantsTotal = len(uv.get_ants())
     power = np.empty((nantsTotal,nantsTotal))
-    fig, axs = plt.subplots(1,len(pols),figsize=(16,16))
-    dirs = ['NS','EW']
+    fig, axs = plt.subplots(2,2,figsize=(16,16))
+    dirs = ['NN','EE','NE','EN']
     loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
     jd = uv.time_array[0]
     t = Time(jd,format='jd',location=loc)
     lst = round(t.sidereal_time('mean').hour,2)
     t.format='fits'
     antnumsAll = sort_antennas(uv)
+    i = 0
     for p in range(len(pols)):
+        if p >= 2:
+            i=1
         pol = pols[p]
         nants = len(antnumsAll)
         if logScale is True:
-            im = axs[p].imshow(data[pol],cmap='plasma',origin='upper',extent=[0.5,nantsTotal+.5,0.5,nantsTotal+0.5],norm=LogNorm(vmin=vminIn, vmax=vmaxIn))
+            im = axs[i][p%2].imshow(data[pol],cmap='plasma',origin='upper',extent=[0.5,nantsTotal+.5,0.5,nantsTotal+0.5],norm=LogNorm(vmin=vminIn, vmax=vmaxIn))
         else:
-            im = axs[p].imshow(data[pol],cmap='plasma',origin='upper',extent=[0.5,nantsTotal+.5,0.5,nantsTotal+0.5],vmin=vminIn, vmax=vmaxIn)
-        axs[p].set_xticks(np.arange(0,nantsTotal)+1)
-        axs[p].set_xticklabels(antnumsAll,rotation=90)
-        axs[p].xaxis.set_ticks_position('top')
-        axs[p].set_title('polarization: ' + dirs[p] + '\n')
+            im = axs[i][p%2].imshow(data[pol],cmap='plasma',origin='upper',extent=[0.5,nantsTotal+.5,0.5,nantsTotal+0.5],vmin=vminIn, vmax=vmaxIn)
+        axs[i][p%2].set_xticks(np.arange(0,nantsTotal)+1)
+        axs[i][p%2].set_xticklabels(antnumsAll,rotation=90,fontsize=6)
+        axs[i][p%2].xaxis.set_ticks_position('top')
+        axs[i][p%2].set_title('polarization: ' + dirs[p] + '\n')
         n=0
         for node in sorted(inclNodes):
             n += len(nodeDict[node]['ants'])
-            axs[p].axhline(len(antnumsAll)-n+.5,lw=4)
-            axs[p].axvline(n+.5,lw=4)
-            axs[p].text(n-len(nodeDict[node]['ants'])/2,-.5,node)
-        axs[p].text(.42,-.07,'Node Number',transform=axs[p].transAxes)
+            axs[i][p%2].axhline(len(antnumsAll)-n+.5,lw=4)
+            axs[i][p%2].axvline(n+.5,lw=4)
+            axs[i][p%2].text(n-len(nodeDict[node]['ants'])/2,-.5,node)
+        axs[i][p%2].text(.42,-.05,'Node Number',transform=axs[i][p%2].transAxes)
     n=0
     for node in sorted(inclNodes):
         n += len(nodeDict[node]['ants'])
-        axs[1].text(nantsTotal+1,nantsTotal-n+len(nodeDict[node]['ants'])/2,node)
-    axs[1].text(1.05,0.4,'Node Number',rotation=270,transform=axs[1].transAxes)
-    axs[1].set_yticklabels([])
-    axs[1].set_yticks([])
-    axs[0].set_yticks(np.arange(nantsTotal,0,-1))
-    axs[0].set_yticklabels(antnumsAll)
-    axs[0].set_ylabel('Antenna Number')
-    cbar_ax = fig.add_axes([0.95,0.53,0.02,0.38])
+        axs[0][1].text(nantsTotal+1,nantsTotal-n+len(nodeDict[node]['ants'])/2,node)
+        axs[1][1].text(nantsTotal+1,nantsTotal-n+len(nodeDict[node]['ants'])/2,node)
+    axs[0][1].text(1.05,0.4,'Node Number',rotation=270,transform=axs[0][1].transAxes)
+    axs[0][1].set_yticklabels([])
+    axs[0][1].set_yticks([])
+    axs[0][0].set_yticks(np.arange(nantsTotal,0,-1))
+    axs[0][0].set_yticklabels(antnumsAll,fontsize=6)
+    axs[0][0].set_ylabel('Antenna Number')
+    axs[1][1].text(1.05,0.4,'Node Number',rotation=270,transform=axs[1][1].transAxes)
+    axs[1][1].set_yticklabels([])
+    axs[1][1].set_yticks([])
+    axs[1][0].set_yticks(np.arange(nantsTotal,0,-1))
+    axs[1][0].set_yticklabels(antnumsAll,fontsize=6)
+    axs[1][0].set_ylabel('Antenna Number')
+    cbar_ax = fig.add_axes([0.98,0.18,0.015,0.6])
     cbar_ax.set_xlabel('|V|', rotation=0)
     cbar = fig.colorbar(im, cax=cbar_ax)
     fig.suptitle('Correlation Matrix - JD: %s, LST: %.0fh' % (str(jd),np.round(lst,0)))
-    fig.subplots_adjust(top=1.32,wspace=0.05)
+    fig.subplots_adjust(top=1.28,wspace=0.05,hspace=1.1)
+    fig.tight_layout(pad=2)
+    plt.show()
+    plt.close()
     
 def get_hourly_files(uv, HHfiles, jd):
     """
@@ -768,7 +783,7 @@ def get_baseline_groups(uv, bl_groups=[(14,0,'14m E-W'),(29,0,'29m E-W'),(14,-11
 
     
 def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='auto',badThresh=0.35,pols=['xx','yy'],bl_type=(14,0,'14m E-W'),
-                                        removeBadAnts=False, plotMatrix=True):
+                                        removeBadAnts=False, plotMatrix=True,mat_pols=['xx','yy','xy','yx']):
     """
     Calculates the average correlation metric for a set of redundant baseline groups at one hour intervals throughout a night of observation.
     
@@ -804,7 +819,7 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='auto',badThresh=
     if use_ants == 'auto':
         use_ants = uv.get_ants()
     nTimes = len(files)
-    plotTimes = [0,nTimes-1,nTimes//2]
+    plotTimes = [0,nTimes//2,nTimes-1]
     nodeDict, antDict, inclNodes = generate_nodeDict(uv)
     JD = math.floor(uv.time_array[0])
     bad_antennas = []
@@ -825,9 +840,9 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='auto',badThresh=
         except:
             print(f'WARNING: unable to read {dffile}')
             continue
-        matrix, badAnts = calcEvenOddAmpMatrix(sm,df,nodes='auto',badThresh=badThresh)
+        matrix, badAnts = calcEvenOddAmpMatrix(sm,df,nodes='auto',pols=mat_pols,badThresh=badThresh)
         if plotMatrix is True and f in plotTimes:
-            plotCorrMatrix(sm, matrix, nodes='auto')
+            plotCorrMatrix(sm, matrix, pols=mat_pols, nodes='auto')
         for group in bl_type:
             medians = {
                 'inter' : {},
