@@ -279,11 +279,16 @@ def plotNodeAveragedSummary(uv,HHfiles,jd,use_ants,pols=['xx','yy'],mat_pols=['x
                 continue
             for i in range(len(pols)):
                 pol = pols[i]
-                axs[i][0].plot(lsts, data['inter'][pol], color=cmap(colorInd), label=group[2])
-                axs[i][1].plot(lsts, data['intra'][pol], color=cmap(colorInd), label=group[2])
+                axs[i][0].plot(data['inter'][pol], color=cmap(colorInd), label=group[2])
+                axs[i][1].plot(data['intra'][pol], color=cmap(colorInd), label=group[2])
                 axs[i][0].set_ylabel('Median Correlation Metric')
                 axs[i][0].set_title('Internode, Polarization %s' % pol)
                 axs[i][1].set_title('Intranode, Polarization %s' % pol)
+                xticks = np.arange(0,len(lsts),1)
+                axs[i][0].set_xticks(xticks)
+                axs[i][0].set_xticklabels([str(lst) for lst in lsts])
+                axs[i][1].set_xticks(xticks)
+                axs[i][1].set_xticklabels([str(lst) for lst in lsts])
         axs[1][1].legend()
         axs[1][0].set_xlabel('LST (hours)')
         axs[1][1].set_xlabel('LST (hours)')
@@ -375,7 +380,6 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
                     axs[j][p].set_yscale('log')
                     axs[j][p].set_title('%s: %s pol' % (orientation,pol_labels[p]))
                     if j == 0:
-#                         axs[0][0].legend()
                         axs[len(baseline_groups)-1][p].set_xlabel('Frequency (MHz)')
             if p == 0:
                 axs[j][p].legend()
@@ -862,7 +866,7 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='auto',badThresh=
                     result[group[2]]['intra'][pol] = []
             bls = get_baseline_type(uv,bl_type=group,use_ants=use_ants)
             if bls == None:
-                print(f'No baselines of type {group}')
+#                 print(f'No baselines of type {group}')
                 continue
             baselines = [uv.baseline_to_antnums(bl) for bl in bls]
             for ant in badAnts:
