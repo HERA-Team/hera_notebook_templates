@@ -574,7 +574,7 @@ def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
         i += 192
     return rat
     
-def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.5):
+def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.3):
     """
     Calculates a matrix of phase correlations between antennas, where each pixel is calculated as (even/abs(even)) * (conj(odd)/abs(odd)), and then averaged across time and frequency.
     
@@ -624,8 +624,11 @@ def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.5):
                 product = np.multiply(even,np.conj(odd))
                 data[pol][i,j] = np.abs(np.mean(product))
                 thisAnt.append(np.abs(np.mean(product)))
-            if np.nanmean(thisAnt) < badThresh and antnumsAll[i] not in badAnts:
-                badAnts.append(antnumsAll[i])
+            pgood = np.count_nonzero(~np.isnan(thisAnt))/len(thisAnt)
+            if (np.nanmedian(thisAnt) < badThresh or pgood<0.2) and antnumsAll[i] not in badAnts:
+                if pol[0]==pol[1]:
+                    #Don't assign bad ants based on cross pols
+                    badAnts.append(antnumsAll[i])
     return data, badAnts
 
 
