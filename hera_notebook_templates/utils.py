@@ -337,6 +337,7 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
             print(f'Note: not enough baselines of orientation {orientation} - using all available baselines')
         elif usable <= 10:
             print(f'Note: only a small number of baselines of orientation {orientation} are available')
+            use_all = False
         else:
             use_all = False
         for p in range(len(pols)):
