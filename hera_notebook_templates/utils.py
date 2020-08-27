@@ -263,7 +263,7 @@ def plotNodeAveragedSummary(uv,HHfiles,jd,use_ants,pols=['xx','yy'],mat_pols=['x
                       (102.3,0,'102m E-W')]
     nodeMedians,lsts,badAnts=get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants,pols=pols,mat_pols=mat_pols,
                                                                 bl_type=baseline_groups,removeBadAnts=removeBadAnts)
-    pols = ['xx','yy']
+    pols = mat_pols
     if len(lsts)>1:
         fig,axs = plt.subplots(len(pols),2,figsize=(16,16))
         maxLength = 0
@@ -292,6 +292,7 @@ def plotNodeAveragedSummary(uv,HHfiles,jd,use_ants,pols=['xx','yy'],mat_pols=['x
         axs[1][1].legend()
         axs[1][0].set_xlabel('LST (hours)')
         axs[1][1].set_xlabel('LST (hours)')
+        fig.tight_layout(pad=2)
     else:
         print('#############################################################################')
         print('Not enough LST coverage to show metric evolution - that plot is being skipped')
@@ -744,6 +745,8 @@ def get_hourly_files(uv, HHfiles, jd):
         jd = dat.time_array[0]
         t = Time(jd,format='jd',location=loc)
         lst = round(t.sidereal_time('mean').hour,2)
+        if np.round(lst,0) == 24:
+            continue
         if np.abs((lst-np.round(lst,0)))<0.05:
             if len(use_lsts)>0 and np.abs(use_lsts[-1]-lst)<0.5:
                 if np.abs((lst-np.round(lst,0))) < abs((use_lsts[-1]-np.round(lst,0))):
@@ -831,7 +834,8 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='auto',badThresh=
     nodeDict, antDict, inclNodes = generate_nodeDict(uv)
     JD = math.floor(uv.time_array[0])
     bad_antennas = []
-    corrSummary = generateDataTable(uv)
+    pols = mat_pols
+    corrSummary = generateDataTable(uv,pols=pols)
     result = {}
     for f in range(nTimes):
         file = files[f]
@@ -877,13 +881,13 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='auto',badThresh=
                     bad_antennas.append(ant)
             if removeBadAnts is True:
                 nodeInfo = {
-                    'inter' : getInternodeMedians(sm,matrix,badAnts=bad_antennas, baselines=baselines),
-                    'intra' : getIntranodeMedians(sm,matrix,badAnts=bad_antennas, baselines=baselines)
+                    'inter' : getInternodeMedians(sm,matrix,badAnts=bad_antennas, baselines=baselines,pols=pols),
+                    'intra' : getIntranodeMedians(sm,matrix,badAnts=bad_antennas, baselines=baselines,pols=pols)
                 }
             else:
                 nodeInfo = {
-                    'inter' : getInternodeMedians(sm,matrix, baselines=baselines),
-                    'intra' : getIntranodeMedians(sm,matrix,baselines=baselines)
+                    'inter' : getInternodeMedians(sm,matrix, baselines=baselines,pols=pols),
+                    'intra' : getIntranodeMedians(sm,matrix,baselines=baselines,pols=pols)
                 }
             for node in nodeDict:
                 for pol in pols:
