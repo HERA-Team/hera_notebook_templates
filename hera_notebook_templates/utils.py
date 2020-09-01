@@ -25,6 +25,26 @@ import hera_qm
 warnings.filterwarnings('ignore')
 
 
+def plot_crossed(uv,use_ants):
+    rats = []
+    shp = np.shape(uv.data_array)
+    ntimes = np.unique(uv.time_array)
+    nbls = uv.Nbls
+    dat = np.reshape(uv.data_array,(uv.Ntimes,uv.Nbls,uv.Nspws,uv.Nfreqs,uv.Npols))
+#     for ant in use_ants:
+#         xx = uv.get_data(ant,ant,'xx')
+#         yy = uv.get_data(ant,ant,'yy')
+#         xy = uv.get_data(ant,ant,'xy')
+#         yx = uv.get_data(ant,ant,'yx')
+#         t = xy + yx
+#         b = xx + yy
+#         rat = np.divide(t,b)
+#         rats.append(np.nanmean(rat))
+    fig = plt.figure(figsize=(8,8))
+    plt.hist(rats)
+    plt.show()
+    plt.close()
+
 def load_data(data_path,JD):
     HHfiles = sorted(glob.glob("{0}/zen.{1}.*.sum.uvh5".format(data_path,JD)))
     difffiles = sorted(glob.glob("{0}/zen.{1}.*.diff.uvh5".format(data_path,JD)))
