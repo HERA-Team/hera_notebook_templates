@@ -171,6 +171,50 @@ def plot_wfs(uvd, pol):
     cbar_ax=fig.add_axes([0.95,0.15,0.02,0.7])        
     fig.colorbar(im, cax=cbar_ax)
     fig.show()
+    
+def plot_mean_subtracted_wfs(uvd, use_ants, pols=['xx','yy']):
+    freqs = (uvd.freq_array[0])*1e-6
+    times = uvd.time_array
+    lsts = np.unique(uvd.lst_array*3.819719)
+    ants = sorted(use_ants)
+    Nants = len(ants) 
+    pol_labels = ['NN','EE']
+    
+    fig, axes = plt.subplots(Nants, 2, figsize=(20,Nants*4))
+    fig.suptitle('Mean Subtracted Waterfalls')
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.subplots_adjust(left=.1, bottom=.1, right=.85, top=.975, wspace=0.05, hspace=0.2)
+
+    for i,ant in enumerate(ants):
+        for j,pol in enumerate(pols):
+            ax = axes[i,j]
+            dat = np.log10(np.abs(uvd.get_data(ant,ant,pol)))
+            ms = np.subtract(dat, np.nanmean(dat,axis=0))
+            im = ax.imshow(ms, 
+                           vmin = -0.07, vmax = 0.07, aspect='auto')
+            ax.set_title(f'{ant} - {pol_labels[j]} pol', fontsize=10)
+            if j != 0:
+                ax.set_yticklabels([])
+            else:
+                yticks = [int(i) for i in np.linspace(0,len(lsts)-1,6)]
+                yticklabels = np.around(lsts[yticks],1)
+                [t.set_fontsize(12) for t in ax.get_yticklabels()]
+                ax.set_ylabel('Time(LST)', fontsize=10)
+                ax.set_yticks(yticks)
+                ax.set_yticklabels(yticklabels)
+            if i != Nants-1:
+                ax.set_xticklabels([])
+            else:
+                [t.set_fontsize(10) for t in ax.get_xticklabels()]
+                [t.set_rotation(25) for t in ax.get_xticklabels()]
+                ax.xaxis.set_major_formatter(FormatStrFormatter('%.3f'))
+                ax.set_xlabel('Frequency (MHz)', fontsize=10)
+        if j == 1:
+            pos = ax.get_position()
+            cbar_ax=fig.add_axes([0.88,pos.y0,0.02,pos.height])
+            fig.colorbar(im, cax=cbar_ax)
+
+    fig.show()
 
 def plot_closure(uvd, triad_length, pol):
     """Plot closure phase for an example triad.
