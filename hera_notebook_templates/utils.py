@@ -22,6 +22,8 @@ from hera_mc import cm_hookup, geo_sysdef
 import math
 from uvtools import dspec
 import hera_qm 
+from hera_mc import cm_active
+from matplotlib.lines import Line2D
 warnings.filterwarnings('ignore')
 
 
@@ -61,60 +63,150 @@ def load_data(data_path,JD):
     return HHfiles, difffiles, HHautos, diffautos, uvd_xx1, uvd_yy1
 
 def plot_autos(uvdx, uvdy):
+    nodes, antDict, inclNodes = generate_nodeDict(uvdx)
     ants = uvdx.get_ants()
+    sorted_ants = sort_antennas(uvdx)
     freqs = (uvdx.freq_array[0])*10**(-6)
     times = uvdx.time_array
-    lsts = uvdx.lst_array
+    lsts = uvdx.lst_array  
+    maxants = 0
+    for node in nodes:
+        n = len(nodes[node]['ants'])
+        if n>maxants:
+            maxants = n
     
     Nants = len(ants)
-    Nside = int(np.ceil(np.sqrt(Nants)))
-    Yside = int(np.ceil(float(Nants)/Nside))
+    Nside = maxants
+    Yside = len(inclNodes)
     
     t_index = 0
     jd = times[t_index]
     utc = Time(jd, format='jd').datetime
+    
+    status_colors = {
+        'dish_maintenance' : 'salmon',
+        'dish_ok' : 'red',
+        'RF_maintenance' : 'peachpuff',
+        'RF_ok' : 'darkorange',
+        'digital_maintenance' : 'plum',
+        'digital_ok' : 'darkorchid',
+        'calibration_maintenance' : 'lightgreen',
+        'calibration_ok' : 'green',
+        'calibration_triage' : 'cyan'}
+    h = cm_active.ActiveData(at_date=jd)
+    h.load_apriori()
+    
+    custom_lines = []
+    labels = []
+    for s in status_colors.keys():
+        c = status_colors[s]
+        custom_lines.append(Line2D([0],[0],color=c,lw=2))
+        labels.append(s)
 
     xlim = (np.min(freqs), np.max(freqs))
     ylim = (60, 90)
 
-    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2, Nside*2))
+    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2, Nside*3))
 
     fig.suptitle("JD = {0}, time = {1} UTC".format(jd, utc), fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.subplots_adjust(left=.1, bottom=.1, right=.9, top=.9, wspace=0.05, hspace=0.2)
-
+    fig.subplots_adjust(left=.1, bottom=.1, right=.9, top=.9, wspace=0.05, hspace=0.3)
     k = 0
-    for i in range(Yside):
-        for j in range(Nside):
+    for i,n in enumerate(inclNodes):
+        ants = nodes[n]['ants']
+        j = 0
+        for _,a in enumerate(sorted_ants):
+            if a not in ants:
+                continue
+            status = h.apriori[f'HH{a}:A'].status
             ax = axes[i,j]
             ax.set_xlim(xlim)
             ax.set_ylim(ylim)
-            if k < Nants:
-                px, = ax.plot(freqs, 10*np.log10(np.abs(uvdx.get_data((ants[k], ants[k]))[t_index])), color='r', alpha=0.75, linewidth=1)
-                py, = ax.plot(freqs, 10*np.log10(np.abs(uvdy.get_data((ants[k], ants[k]))[t_index])), color='b', alpha=0.75, linewidth=1)
-            
-                ax.grid(False, which='both')
-                ax.set_title(str(ants[k]), fontsize=14)
-            
-                if k == 0:
-                    ax.legend([px, py], ['North1', 'East1'])
-                    #ax.legend([px, py, px2, py2, px3, py3], ['East1', 'North1', 'East2', 'North2', 'East3', 'North3'], fontsize=12)
-            
+            px, = ax.plot(freqs, 10*np.log10(np.abs(uvdx.get_data((a, a))[t_index])), color='r', alpha=0.75, linewidth=1)
+            py, = ax.plot(freqs, 10*np.log10(np.abs(uvdy.get_data((a, a))[t_index])), color='b', alpha=0.75, linewidth=1)
+            ax.grid(False, which='both')
+            ax.set_title(str(a), fontsize=14, backgroundcolor=status_colors[status])
+            if k == 0:
+                ax.legend([px, py], ['NN', 'EE'])
+            if i == len(inclNodes)-1:
+                [t.set_fontsize(10) for t in ax.get_xticklabels()]
+                ax.set_xlabel('freq (MHz)', fontsize=10)
             else:
-                ax.axis('off')
-            if j != 0:
+                ax.set_xticklabels([])
+            if j!=0:
                 ax.set_yticklabels([])
             else:
                 [t.set_fontsize(10) for t in ax.get_yticklabels()]
-                ax.set_ylabel(r'$10\cdot\log_{10}$ amplitude', fontsize=10)
-            if i != Yside-1:
-                ax.set_xticklabels([])
-            else:
-                [t.set_fontsize(10) for t in ax.get_xticklabels()]
-                ax.set_xlabel('freq (MHz)', fontsize=10)
+                ax.set_ylabel(r'$10\cdot\log$(amp)', fontsize=10)
+            j += 1
             k += 1
+        for k in range(j,maxants):
+            axes[i,k].axis('off')
+        axes[i,maxants-1].annotate(f'Node {n}', (1.1,.3),xycoords='axes fraction',rotation=270)
+    fig.legend(custom_lines,labels,bbox_to_anchor=(0.6,0.9),ncol=3)
     fig.show()
-
+    
+def statuses_legend(uv,jd):
+    status_colors = {
+        'dish_maintenance' : 'salmon',
+        'dish_ok' : 'red',
+        'RF_maintenance' : 'peachpuff',
+        'RF_ok' : 'darkorange',
+        'digital_maintenance' : 'plum',
+        'digital_ok' : 'darkorchid',
+        'calibration_maintenance' : 'lightgreen',
+        'calibration_ok' : 'green',
+        'calibration_triage' : 'cyan'}
+    fig = plt.figure(figsize=(10,3))
+    xs = np.linspace(0,10,9)
+    for i,status in enumerate(status_colors.keys()):
+        print(status)
+        color = status_colors[status]
+        print(color)
+        print(xs[i])
+        plt.plot(xs[i],0,color=color,markersize=100,label=status,markerfacecolor=color)
+    plt.legend()
+    plt.show()
+    
+def antenna_statuses_map(uv,jd):
+    
+    plt.figure(figsize=(12,10))
+    nodes, antDict, inclNodes = generate_nodeDict(uv)
+    N = len(inclNodes)
+    i = 0
+    nodePos = geo_sysdef.read_nodes()
+    antPos = geo_sysdef.read_antennas()
+    ants = geo_sysdef.read_antennas()
+#     print(ants)
+    nodes = geo_sysdef.read_nodes()
+    
+    status_colors = {
+        'dish_maintenance' : 'salmon',
+        'dish_ok' : 'red',
+        'RF_maintenance' : 'peachpuff',
+        'RF_ok' : 'darkorange',
+        'digital_maintenance' : 'plum',
+        'digital_ok' : 'darkorchid',
+        'calibration_maintenance' : 'lightgreen',
+        'calibration_ok' : 'green',
+        'calibration_triage' : 'cyan'}
+    h = cm_active.ActiveData(at_date=jd)
+    h.load_apriori()
+    for ant in uv.get_ants():
+        status = h.apriori[f'HH{ant}:A'].status
+        color = status_colors[status]
+        station = 'HH{}'.format(ant)
+        try:
+            this_ant = ants[station]
+        except KeyError:
+            continue
+        x = this_ant['E']
+        y = this_ant['N']
+        plt.plot(x,y,marker="h",markersize=40,color=color)
+        plt.annotate(ant,[x-1,y])
+#     plt.legend(,bbox_to_anchor=(1.15,0.9))
+    plt.xlabel('East')
+    plt.ylabel('North')
     
 def plot_wfs(uvd, pol):
     amps = np.abs(uvd.data_array[:, :, :, pol].reshape(uvd.Ntimes, uvd.Nants_data, uvd.Nfreqs, 1))
@@ -205,15 +297,15 @@ def plot_mean_subtracted_wfs(uvd, use_ants, pols=['xx','yy']):
             if i != Nants-1:
                 ax.set_xticklabels([])
             else:
-                [t.set_fontsize(10) for t in ax.get_xticklabels()]
-                [t.set_rotation(25) for t in ax.get_xticklabels()]
-                ax.xaxis.set_major_formatter(FormatStrFormatter('%.3f'))
+                xticks = [int(i) for i in np.linspace(0,len(freqs)-1,8)]
+                xticklabels = np.around(freqs[xticks],0)
+                ax.set_xticks(xticks)
+                ax.set_xticklabels(xticklabels)
                 ax.set_xlabel('Frequency (MHz)', fontsize=10)
         if j == 1:
             pos = ax.get_position()
             cbar_ax=fig.add_axes([0.88,pos.y0,0.02,pos.height])
             fig.colorbar(im, cax=cbar_ax)
-
     fig.show()
 
 def plot_closure(uvd, triad_length, pol):
@@ -907,7 +999,7 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='auto',badThresh=
             for pol in pols:
                 medians['inter'][pol] = []
                 medians['intra'][pol] = []
-            if file == files[0]:
+            if group[2] not in result.keys():
                 result[group[2]] = {
                     'inter' : {},
                     'intra' : {}
