@@ -134,6 +134,63 @@ def plot_autos(uvdx, uvdy):
                 ax.set_xlabel('freq (MHz)', fontsize=10)
             k += 1
     fig.show()
+    
+def plot_crosses(uvd, ref_ant):
+    ants = uvd.get_ants()
+    freqs = (uvd.freq_array[0])*10**(-6)
+    times = uvd.time_array
+    lsts = uvd.lst_array
+    
+    Nants = len(ants)
+#     Nside = int(np.ceil(np.sqrt(Nants)))*3
+    Nside = 4
+    Yside = int(np.ceil(float(Nants)/Nside))
+    
+    t_index = 0
+    jd = times[t_index]
+    utc = Time(jd, format='jd').datetime
+
+    xlim = (np.min(freqs), np.max(freqs))
+    ylim = (60, 90)
+
+    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2, Nside*60))
+
+    fig.suptitle("JD = {0}, time = {1} UTC".format(jd, utc), fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.subplots_adjust(left=.1, bottom=.1, right=.9, top=.9, wspace=0.05, hspace=0.2)
+
+    k = 0
+    for i in range(Yside):
+        for j in range(Nside):
+            ax = axes[i,j]
+            ax.set_xlim(xlim)
+#             ax.set_ylim(ylim)
+            if k < Nants:
+                px, = ax.plot(freqs, 10*np.log10(np.abs(np.mean(uvd.get_data((ants[k], ref_ant, 'xx')),axis=0))), color='red', alpha=0.75, linewidth=1)
+                py, = ax.plot(freqs, 10*np.log10(np.abs(np.mean(uvd.get_data((ants[k], ref_ant, 'yy')),axis=0))), color='darkorange', alpha=0.75, linewidth=1)
+                pxy, = ax.plot(freqs, 10*np.log10(np.abs(np.mean(uvd.get_data((ants[k], ref_ant, 'xy')),axis=0))), color='royalblue', alpha=0.75, linewidth=1)
+                pyx, = ax.plot(freqs, 10*np.log10(np.abs(np.mean(uvd.get_data((ants[k], ref_ant, 'yx')),axis=0))), color='darkviolet', alpha=0.75, linewidth=1)
+            
+                ax.grid(False, which='both')
+                ax.set_title(str(ants[k]), fontsize=14)
+            
+                if k == 0:
+                    ax.legend([px, py, pxy, pyx], ['XX', 'YY', 'XY','YX'])
+            
+            else:
+                ax.axis('off')
+            if j != 0:
+                ax.set_yticklabels([])
+            else:
+                [t.set_fontsize(10) for t in ax.get_yticklabels()]
+                ax.set_ylabel(r'$10\cdot\log_{10}$ amplitude', fontsize=10)
+            if i != Yside-1:
+                ax.set_xticklabels([])
+            else:
+                [t.set_fontsize(10) for t in ax.get_xticklabels()]
+                ax.set_xlabel('freq (MHz)', fontsize=10)
+            k += 1
+    fig.show()
 
     
 def plot_wfs(uvd, pol):
@@ -655,17 +712,12 @@ def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.25, pl
                     badAnts.append(antnumsAll[i])
     if plotRatios is True:
         if len(pols) == 4:
-            data['xx/xy'] = np.divide(data['xx'],data['xy'])
-            data['yy/xy'] = np.divide(data['yy'],data['xy'])
-            data['xx/yx'] = np.divide(data['xx'],data['yx'])
-            data['yy/yx'] = np.divide(data['yy'],data['yx'])
             data['xx-xy'] = np.subtract(data['xx'],data['xy'])
             data['xx-yx'] = np.subtract(data['xx'],data['yx'])
             data['yy-xy'] = np.subtract(data['yy'],data['xy'])
             data['yy-yx'] = np.subtract(data['yy'],data['yx'])
-            data['(xy+yx)/(xx+yy)'] = np.divide(data['xy']+data['yx'],data['xx']+data['yy'])
         else:
-            print('Can only calculate ratios if cross pols were specified')
+            print('Can only calculate differences if cross pols were specified')
     return data, badAnts
 
 
@@ -833,8 +885,9 @@ def get_hourly_files(uv, HHfiles, jd):
     """
     use_lsts = []
     use_files = []
+    use_file_inds = []
     loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
-    for file in HHfiles:
+    for i,file in enumerate(HHfiles):
         try:
             dat = UVData()
             dat.read(file, read_data=False)
@@ -850,10 +903,12 @@ def get_hourly_files(uv, HHfiles, jd):
                 if np.abs((lst-np.round(lst,0))) < abs((use_lsts[-1]-np.round(lst,0))):
                     use_lsts[-1] = lst
                     use_files[-1] = file
+                    use_file_inds[-1] = i
             else:
                 use_lsts.append(lst)
                 use_files.append(file)
-    return use_files, use_lsts
+                use_file_inds.append(i)
+    return use_files, use_lsts, use_file_inds
 
 def get_baseline_groups(uv, bl_groups=[(14,0,'14m E-W'),(29,0,'29m E-W'),(14,-11,'14m NW-SE'),(14,11,'14m SW-NE')],
                        use_ants='auto'):
@@ -924,11 +979,18 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='auto',badThresh=
     bad_antennas: List
         Antenna numbers flagged as bad based on badThresh parameter.
     """
-    files, lsts = get_hourly_files(uv, HHfiles, jd)
+    files, lsts, inds = get_hourly_files(uv, HHfiles, jd)
     if use_ants == 'auto':
         use_ants = uv.get_ants()
-    nTimes = len(files)
-    plotTimes = [0,nTimes//2,nTimes-1]
+    if plotRatios is True:
+        files = [files[len(files)//2]]
+        nTimes=1
+    else:
+        nTimes = len(files)
+    if nTimes > 3:
+        plotTimes = [0,nTimes//2,nTimes-1]
+    else:
+        plotTimes = np.arange(0,nTimes,1)
     nodeDict, antDict, inclNodes = generate_nodeDict(uv)
     JD = math.floor(uv.time_array[0])
     bad_antennas = []
@@ -937,19 +999,30 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='auto',badThresh=
     result = {}
     for f in range(nTimes):
         file = files[f]
+        ind = inds[f]
         sm = UVData()
         df = UVData()
         try:
+#             print(f'Trying to read {file}')
             sm.read(file, skip_bad_files=True, antenna_nums=use_ants)
-        except:
-            print(f'WARNING: unable to read {file}')
-            continue
-        try:
             dffile = '%sdiff%s' % (file[0:-8],file[-5:])
             df.read(dffile, skip_bad_files=True, antenna_nums=use_ants)
         except:
-            print(f'WARNING: unable to read {dffile}')
-            continue
+            i = -5
+            read = False
+            while i<5 and read==False:
+                try:
+                    file = HHfiles[ind+i]
+#                     print(f'trying to read {file}')
+                    sm.read(file, skip_bad_files=True, antenna_nums=use_ants)
+                    dffile = '%sdiff%s' % (file[0:-8],file[-5:])
+                    df.read(dffile, skip_bad_files=True, antenna_nums=use_ants)
+                    read = True
+                except:
+                    i += 1
+            if read == False:
+                print(f'WARNING: unable to read {file}')
+                continue
         matrix, badAnts = calcEvenOddAmpMatrix(sm,df,nodes='auto',pols=mat_pols,badThresh=badThresh,plotRatios=plotRatios)
         if plotMatrix is True and f in plotTimes:
             plotCorrMatrix(sm, matrix, pols=mat_pols, nodes='auto',plotRatios=plotRatios)
@@ -961,7 +1034,7 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='auto',badThresh=
             for pol in pols:
                 medians['inter'][pol] = []
                 medians['intra'][pol] = []
-            if file == files[0]:
+            if group[2] not in result.keys():
                 result[group[2]] = {
                     'inter' : {},
                     'intra' : {}
