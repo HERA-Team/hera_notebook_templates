@@ -214,7 +214,7 @@ def plot_wfs(uvd, pol):
             ax = axes[i,j]
             dat = uvd.get_data(a,a,polnames[pol])
             im = ax.imshow(np.log10(np.abs(dat)), 
-                           vmin = vmin, vmax = vmax, aspect='auto')
+                           vmin = vmin, vmax = vmax, aspect='auto',interpolation='nearest')
             ax.set_title(str(a), fontsize=10,backgroundcolor=status_colors[status])
             if i == len(inclNodes)-1:
                 xticks = [int(i) for i in np.linspace(0,len(freqs)-1,3)]
@@ -268,7 +268,7 @@ def plot_mean_subtracted_wfs(uvd, use_ants, pols=['xx','yy']):
             dat = np.log10(np.abs(uvd.get_data(ant,ant,pol)))
             ms = np.subtract(dat, np.nanmean(dat,axis=0))
             im = ax.imshow(ms, 
-                           vmin = -0.07, vmax = 0.07, aspect='auto')
+                           vmin = -0.07, vmax = 0.07, aspect='auto',interpolation='nearest')
             ax.set_title(f'{ant} - {pol_labels[j]} pol', fontsize=10)
             if j != 0:
                 ax.set_yticklabels([])
@@ -351,7 +351,7 @@ def plot_closure(uvd, triad_length, pol):
                           * uvd.get_data(triad[1], triad[2], pol)
                           * uvd.get_data(triad[2], triad[0], pol))
     plt.imshow(closure_ph, aspect='auto', rasterized=True,
-                           interpolation='nearest', cmap = 'twilight')
+                           interpolation='nearest', cmap = 'twilight',interpolation='nearest')
     
 def plotNodeAveragedSummary(uv,HHfiles,jd,use_ants,pols=['xx','yy'],mat_pols=['xx','yy'],
                             baseline_groups=[],removeBadAnts=False,plotRatios=False,plotSummary=True):
@@ -626,7 +626,7 @@ def plot_lst_coverage(uvd):
 
     fig = plt.figure(figsize=(20,2))
     ax = fig.add_subplot()
-    im = ax.imshow(usetimes, aspect='auto',cmap='RdYlGn',vmin=0,vmax=1)
+    im = ax.imshow(usetimes, aspect='auto',cmap='RdYlGn',vmin=0,vmax=1,interpolation='nearest')
     fig.colorbar(im)
     ax.set_yticklabels([])
     ax.set_yticks([])
@@ -682,7 +682,7 @@ def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
     my_cmap = copy.deepcopy(matplotlib.cm.get_cmap('viridis'))
     my_cmap.set_under('r')
     my_cmap.set_over('r')
-    im = plt.imshow(rat,aspect='auto',vmin=0.5,vmax=2,cmap=my_cmap)
+    im = plt.imshow(rat,aspect='auto',vmin=0.5,vmax=2,cmap=my_cmap,interpolation='nearest')
     fig.colorbar(im)
     ax.set_title('Even/odd Visibility Ratio')
     ax.set_xlabel('Frequency (MHz)')
@@ -884,20 +884,12 @@ def plot_single_matrix(uv,data,vminIn=0,vmaxIn=1,nodes='auto',logScale=False):
     n=0
     for node in sorted(inclNodes):
         n += len(nodeDict[node]['ants'])
-#         axs[0][1].text(nantsTotal+1,nantsTotal-n+len(nodeDict[node]['ants'])/2,node)
         axs[0][0].text(nantsTotal+1,nantsTotal-n+len(nodeDict[node]['ants'])/2,node)
     axs[0][0].text(1.05,0.4,'Node Number',rotation=270,transform=axs[0][0].transAxes)
-#     axs[0][1].set_yticklabels([])
-#     axs[0][1].set_yticks([])
     axs[0][0].set_yticks(np.arange(nantsTotal,0,-1))
     axs[0][0].set_yticklabels(antnumsAll,fontsize=6)
     axs[0][0].set_ylabel('Antenna Number')
     axs[0][0].text(1.05,0.4,'Node Number',rotation=270,transform=axs[0][0].transAxes)
-#     axs[1][1].set_yticklabels([])
-#     axs[1][1].set_yticks([])
-#     axs[1][0].set_yticks(np.arange(nantsTotal,0,-1))
-#     axs[1][0].set_yticklabels(antnumsAll,fontsize=6)
-#     axs[1][0].set_ylabel('Antenna Number')
     cbar_ax = fig.add_axes([0.98,0.18,0.015,0.6])
     cbar_ax.set_xlabel('|V|', rotation=0)
     cbar = fig.colorbar(im, cax=cbar_ax)
