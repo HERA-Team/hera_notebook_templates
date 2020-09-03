@@ -351,7 +351,7 @@ def plot_closure(uvd, triad_length, pol):
                           * uvd.get_data(triad[1], triad[2], pol)
                           * uvd.get_data(triad[2], triad[0], pol))
     plt.imshow(closure_ph, aspect='auto', rasterized=True,
-                           interpolation='nearest', cmap = 'twilight',interpolation='nearest')
+                           interpolation='nearest', cmap = 'twilight')
     
 def plotNodeAveragedSummary(uv,HHfiles,jd,use_ants,pols=['xx','yy'],mat_pols=['xx','yy'],
                             baseline_groups=[],removeBadAnts=False,plotRatios=False,plotSummary=True):
