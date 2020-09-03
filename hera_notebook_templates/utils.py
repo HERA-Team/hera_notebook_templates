@@ -22,7 +22,10 @@ from hera_mc import cm_hookup, geo_sysdef
 import math
 from uvtools import dspec
 import hera_qm 
+from hera_mc import cm_active
+from matplotlib.lines import Line2D
 warnings.filterwarnings('ignore')
+
 
 
 def load_data(data_path,JD):
@@ -61,115 +64,233 @@ def load_data(data_path,JD):
     return HHfiles, difffiles, HHautos, diffautos, uvd_xx1, uvd_yy1
 
 def plot_autos(uvdx, uvdy):
+    nodes, antDict, inclNodes = generate_nodeDict(uvdx)
     ants = uvdx.get_ants()
+    sorted_ants = sort_antennas(uvdx)
     freqs = (uvdx.freq_array[0])*10**(-6)
     times = uvdx.time_array
-    lsts = uvdx.lst_array
+    lsts = uvdx.lst_array  
+    maxants = 0
+    for node in nodes:
+        n = len(nodes[node]['ants'])
+        if n>maxants:
+            maxants = n
     
     Nants = len(ants)
-    Nside = int(np.ceil(np.sqrt(Nants)))
-    Yside = int(np.ceil(float(Nants)/Nside))
+    Nside = maxants
+    Yside = len(inclNodes)
     
     t_index = 0
     jd = times[t_index]
     utc = Time(jd, format='jd').datetime
+    
+    status_colors = {
+        'dish_maintenance' : 'salmon',
+        'dish_ok' : 'red',
+        'RF_maintenance' : 'lightskyblue',
+        'RF_ok' : 'royalblue',
+        'digital_maintenance' : 'plum',
+        'digital_ok' : 'mediumpurple',
+        'calibration_maintenance' : 'lightgreen',
+        'calibration_ok' : 'green',
+        'calibration_triage' : 'lime'}
+    h = cm_active.ActiveData(at_date=jd)
+    h.load_apriori()
+    
+    custom_lines = []
+    labels = []
+    for s in status_colors.keys():
+        c = status_colors[s]
+        custom_lines.append(Line2D([0],[0],color=c,lw=2))
+        labels.append(s)
 
     xlim = (np.min(freqs), np.max(freqs))
-    ylim = (60, 90)
+    ylim = (50, 90)
 
-    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2, Nside*2))
+    fig, axes = plt.subplots(Yside, Nside, figsize=(16,Yside*3))
 
-    fig.suptitle("JD = {0}, time = {1} UTC".format(jd, utc), fontsize=10)
+    ptitle = 1.92/(Yside*3)
+    fig.suptitle("JD = {0}, time = {1} UTC".format(jd, utc), fontsize=10,y=1+ptitle)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.subplots_adjust(left=.1, bottom=.1, right=.9, top=.9, wspace=0.05, hspace=0.2)
-
+    fig.subplots_adjust(left=.1, bottom=.1, right=.9, top=1, wspace=0.05, hspace=0.3)
+    fig.legend(custom_lines,labels,bbox_to_anchor=(0.6,.98),ncol=3)
     k = 0
-    for i in range(Yside):
-        for j in range(Nside):
+    for i,n in enumerate(inclNodes):
+        ants = nodes[n]['ants']
+        j = 0
+        for _,a in enumerate(sorted_ants):
+            if a not in ants:
+                continue
+            status = h.apriori[f'HH{a}:A'].status
             ax = axes[i,j]
             ax.set_xlim(xlim)
             ax.set_ylim(ylim)
-            if k < Nants:
-                px, = ax.plot(freqs, 10*np.log10(np.abs(uvdx.get_data((ants[k], ants[k]))[t_index])), color='r', alpha=0.75, linewidth=1)
-                py, = ax.plot(freqs, 10*np.log10(np.abs(uvdy.get_data((ants[k], ants[k]))[t_index])), color='b', alpha=0.75, linewidth=1)
-            
-                ax.grid(False, which='both')
-                ax.set_title(str(ants[k]), fontsize=14)
-            
-                if k == 0:
-                    ax.legend([px, py], ['North1', 'East1'])
-                    #ax.legend([px, py, px2, py2, px3, py3], ['East1', 'North1', 'East2', 'North2', 'East3', 'North3'], fontsize=12)
-            
+            px, = ax.plot(freqs, 10*np.log10(np.abs(uvdx.get_data((a, a))[t_index])), color='r', alpha=0.75, linewidth=1)
+            py, = ax.plot(freqs, 10*np.log10(np.abs(uvdy.get_data((a, a))[t_index])), color='b', alpha=0.75, linewidth=1)
+            ax.grid(False, which='both')
+            ax.set_title(str(a), fontsize=14, backgroundcolor=status_colors[status])
+            if k == 0:
+                ax.legend([px, py], ['NN', 'EE'])
+            if i == len(inclNodes)-1:
+                [t.set_fontsize(10) for t in ax.get_xticklabels()]
+                ax.set_xlabel('freq (MHz)', fontsize=10)
             else:
-                ax.axis('off')
-            if j != 0:
+                ax.set_xticklabels([])
+            if j!=0:
                 ax.set_yticklabels([])
             else:
                 [t.set_fontsize(10) for t in ax.get_yticklabels()]
-                ax.set_ylabel(r'$10\cdot\log_{10}$ amplitude', fontsize=10)
-            if i != Yside-1:
-                ax.set_xticklabels([])
-            else:
-                [t.set_fontsize(10) for t in ax.get_xticklabels()]
-                ax.set_xlabel('freq (MHz)', fontsize=10)
+                ax.set_ylabel(r'$10\cdot\log$(amp)', fontsize=10)
+            j += 1
             k += 1
+        for k in range(j,maxants):
+            axes[i,k].axis('off')
+        axes[i,maxants-1].annotate(f'Node {n}', (1.1,.3),xycoords='axes fraction',rotation=270)
     fig.show()
-
     
 def plot_wfs(uvd, pol):
     amps = np.abs(uvd.data_array[:, :, :, pol].reshape(uvd.Ntimes, uvd.Nants_data, uvd.Nfreqs, 1))
-    
+    nodes, antDict, inclNodes = generate_nodeDict(uvd)
     ants = uvd.get_ants()
+    sorted_ants = sort_antennas(uvd)
     freqs = (uvd.freq_array[0])*10**(-6)
     times = uvd.time_array
     lsts = uvd.lst_array*3.819719
+    inds = np.unique(lsts,return_index=True)[1]
+    lsts = [lsts[ind] for ind in sorted(inds)]
+    maxants = 0
+    polnames = ['xx','yy']
+    for node in nodes:
+        n = len(nodes[node]['ants'])
+        if n>maxants:
+            maxants = n
     
     Nants = len(ants)
-    Nside = int(np.ceil(np.sqrt(Nants)))
-    Yside = int(np.ceil(float(Nants)/Nside))
+    Nside = maxants
+    Yside = len(inclNodes)
     
     t_index = 0
     jd = times[t_index]
     utc = Time(jd, format='jd').datetime
     
+    status_colors = {
+        'dish_maintenance' : 'salmon',
+        'dish_ok' : 'red',
+        'RF_maintenance' : 'lightskyblue',
+        'RF_ok' : 'royalblue',
+        'digital_maintenance' : 'plum',
+        'digital_ok' : 'mediumpurple',
+        'calibration_maintenance' : 'lightgreen',
+        'calibration_ok' : 'green',
+        'calibration_triage' : 'lime'}
+    h = cm_active.ActiveData(at_date=jd)
+    h.load_apriori()
     
-    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2,Nside*2))
+    custom_lines = []
+    labels = []
+    for s in status_colors.keys():
+        c = status_colors[s]
+        custom_lines.append(Line2D([0],[0],color=c,lw=2))
+        labels.append(s)
+    ptitle = 1.92/(Yside*3)
+    fig, axes = plt.subplots(Yside, Nside, figsize=(16,Yside*3))
     if pol == 0:
-        fig.suptitle("waterfalls from {0} -- {1} North Polarization".format(times[0], times[-1]), fontsize=14)
+        fig.suptitle("North Polarization", fontsize=14, y=1+ptitle)
     else:
-        fig.suptitle("waterfalls from {0} -- {1} East Polarization".format(times[0], times[-1]), fontsize=14)
+        fig.suptitle("East Polarization", fontsize=14, y=1+ptitle)
+    fig.legend(custom_lines,labels,bbox_to_anchor=(0.7,1),ncol=3)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.subplots_adjust(left=.1, bottom=.1, right=.9, top=.9, wspace=0.05, hspace=0.2)
+    fig.subplots_adjust(left=0, bottom=.1, right=.9, top=1, wspace=0.1, hspace=0.3)
+    vmin = 6.5
+    vmax = 8
 
-    k = 0
-    for i in range(Yside):
-        for j in range(Nside):
+    for i,n in enumerate(inclNodes):
+        ants = nodes[n]['ants']
+        j = 0
+        for _,a in enumerate(sorted_ants):
+            if a not in ants:
+                continue
+            status = h.apriori[f'HH{a}:A'].status
             ax = axes[i,j]
-            if k < Nants:
-                auto_bl = (ants[k], ants[k])
-                im = ax.imshow(np.log10(np.abs(amps[:, k , :, 0])), 
-                               vmin = 6.5, vmax = 8, aspect='auto', 
-                               extent=[freqs[0], freqs[-1], np.max(lsts), np.min(lsts)])
-        
-                ax.set_title(str(ants[k]), fontsize=10)
+            dat = uvd.get_data(a,a,polnames[pol])
+            im = ax.imshow(np.log10(np.abs(dat)), 
+                           vmin = vmin, vmax = vmax, aspect='auto',interpolation='nearest')
+            ax.set_title(str(a), fontsize=10,backgroundcolor=status_colors[status])
+            if i == len(inclNodes)-1:
+                xticks = [int(i) for i in np.linspace(0,len(freqs)-1,3)]
+                xticklabels = np.around(freqs[xticks],0)
+                ax.set_xticks(xticks)
+                ax.set_xticklabels(xticklabels)
+                ax.set_xlabel('Freq (MHz)', fontsize=10)
+                [t.set_rotation(70) for t in ax.get_xticklabels()]
             else:
-                ax.axis('off')
+                ax.set_xticklabels([])
             if j != 0:
                 ax.set_yticklabels([])
             else:
+                yticks = [int(i) for i in np.linspace(0,len(lsts)-1,6)]
+                yticklabels = [np.around(lsts[ytick],1) for ytick in yticks]
                 [t.set_fontsize(12) for t in ax.get_yticklabels()]
                 ax.set_ylabel('Time(LST)', fontsize=10)
-            if i != Yside-1:
+                ax.set_yticks(yticks)
+                ax.set_yticklabels(yticklabels)
+                ax.set_ylabel('Time(LST)', fontsize=10)
+            j += 1
+        for k in range(j,maxants):
+            axes[i,k].axis('off')
+        pos = ax.get_position()
+        cbar_ax=fig.add_axes([0.91,pos.y0,0.01,pos.height])        
+        cbar = fig.colorbar(im, cax=cbar_ax)
+        cbar.set_label(f'Node {n}',rotation=270, labelpad=15)
+#         cbarticks = [np.around(x,1) for x in np.linspace(vmin,vmax,7)[i] for i in cbar.get_ticks()]
+#         cbar.set_ticklabels(cbarticks)
+#         axes[i,maxants-1].annotate(f'Node {n}', (.97,pos.y0+.03),xycoords='figure fraction',rotation=270)
+    fig.show()
+    
+def plot_mean_subtracted_wfs(uvd, use_ants, pols=['xx','yy']):
+    freqs = (uvd.freq_array[0])*1e-6
+    times = uvd.time_array
+    lsts = uvd.lst_array*3.819719
+    inds = np.unique(lsts,return_index=True)[1]
+    lsts = [lsts[ind] for ind in sorted(inds)]
+    ants = sorted(use_ants)
+    Nants = len(ants) 
+    pol_labels = ['NN','EE']
+    
+    fig, axes = plt.subplots(Nants, 2, figsize=(20,Nants*4))
+    fig.suptitle('Mean Subtracted Waterfalls')
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.subplots_adjust(left=.1, bottom=.1, right=.85, top=.975, wspace=0.05, hspace=0.2)
+
+    for i,ant in enumerate(ants):
+        for j,pol in enumerate(pols):
+            ax = axes[i,j]
+            dat = np.log10(np.abs(uvd.get_data(ant,ant,pol)))
+            ms = np.subtract(dat, np.nanmean(dat,axis=0))
+            im = ax.imshow(ms, 
+                           vmin = -0.07, vmax = 0.07, aspect='auto',interpolation='nearest')
+            ax.set_title(f'{ant} - {pol_labels[j]} pol', fontsize=10)
+            if j != 0:
+                ax.set_yticklabels([])
+            else:
+                yticks = [int(i) for i in np.linspace(0,len(lsts)-1,6)]
+                yticklabels = [np.around(lsts[ytick],1) for ytick in yticks]
+                [t.set_fontsize(12) for t in ax.get_yticklabels()]
+                ax.set_ylabel('Time(LST)', fontsize=10)
+                ax.set_yticks(yticks)
+                ax.set_yticklabels(yticklabels)
+            if i != Nants-1:
                 ax.set_xticklabels([])
             else:
-                [t.set_fontsize(10) for t in ax.get_xticklabels()]
-                [t.set_rotation(25) for t in ax.get_xticklabels()]
-                ax.xaxis.set_major_formatter(FormatStrFormatter('%.3f'))
+                xticks = [int(i) for i in np.linspace(0,len(freqs)-1,8)]
+                xticklabels = np.around(freqs[xticks],0)
+                ax.set_xticks(xticks)
+                ax.set_xticklabels(xticklabels)
                 ax.set_xlabel('Frequency (MHz)', fontsize=10)
-            k += 1
-        
-    cbar_ax=fig.add_axes([0.95,0.15,0.02,0.7])        
-    fig.colorbar(im, cax=cbar_ax)
+        if j == 1:
+            pos = ax.get_position()
+            cbar_ax=fig.add_axes([0.88,pos.y0,0.02,pos.height])
+            fig.colorbar(im, cax=cbar_ax)
     fig.show()
 
 def plot_closure(uvd, triad_length, pol):
@@ -230,10 +351,10 @@ def plot_closure(uvd, triad_length, pol):
                           * uvd.get_data(triad[1], triad[2], pol)
                           * uvd.get_data(triad[2], triad[0], pol))
     plt.imshow(closure_ph, aspect='auto', rasterized=True,
-                           interpolation='nearest', cmap = 'twilight')
+                           interpolation='nearest', cmap = 'twilight',interpolation='nearest')
     
 def plotNodeAveragedSummary(uv,HHfiles,jd,use_ants,pols=['xx','yy'],mat_pols=['xx','yy'],
-                            baseline_groups=[],removeBadAnts=False):
+                            baseline_groups=[],removeBadAnts=False,plotRatios=False,plotSummary=True):
     """
     Plots a summary of baseline correlations throughout a night for each baseline group specified, separated into inter-node and intra-node baselines, for each polarization specified.
     
@@ -262,8 +383,11 @@ def plotNodeAveragedSummary(uv,HHfiles,jd,use_ants,pols=['xx','yy'],mat_pols=['x
                        (44,0,'44m E-W'),(58.5,0,'58m E-W'),(73,0,'73m E-W'),(87.6,0,'88m E-W'),
                       (102.3,0,'102m E-W')]
     nodeMedians,lsts,badAnts=get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants,pols=pols,mat_pols=mat_pols,
-                                                                bl_type=baseline_groups,removeBadAnts=removeBadAnts)
+                                                                bl_type=baseline_groups,removeBadAnts=removeBadAnts,
+                                                                plotRatios=plotRatios)
     pols = mat_pols
+    if plotSummary is False:
+        return badAnts
     if len(lsts)>1:
         fig,axs = plt.subplots(len(pols),2,figsize=(16,16))
         maxLength = 0
@@ -502,7 +626,7 @@ def plot_lst_coverage(uvd):
 
     fig = plt.figure(figsize=(20,2))
     ax = fig.add_subplot()
-    im = ax.imshow(usetimes, aspect='auto',cmap='RdYlGn',vmin=0,vmax=1)
+    im = ax.imshow(usetimes, aspect='auto',cmap='RdYlGn',vmin=0,vmax=1,interpolation='nearest')
     fig.colorbar(im)
     ax.set_yticklabels([])
     ax.set_yticks([])
@@ -558,7 +682,7 @@ def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
     my_cmap = copy.deepcopy(matplotlib.cm.get_cmap('viridis'))
     my_cmap.set_under('r')
     my_cmap.set_over('r')
-    im = plt.imshow(rat,aspect='auto',vmin=0.5,vmax=2,cmap=my_cmap)
+    im = plt.imshow(rat,aspect='auto',vmin=0.5,vmax=2,cmap=my_cmap,interpolation='nearest')
     fig.colorbar(im)
     ax.set_title('Even/odd Visibility Ratio')
     ax.set_xlabel('Frequency (MHz)')
@@ -575,7 +699,7 @@ def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
         i += 192
     return rat
     
-def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.25):
+def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.25, plotRatios=False):
     """
     Calculates a matrix of phase correlations between antennas, where each pixel is calculated as (even/abs(even)) * (conj(odd)/abs(odd)), and then averaged across time and frequency.
     
@@ -630,10 +754,18 @@ def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.25):
                 if pol[0]==pol[1]:
                     #Don't assign bad ants based on cross pols
                     badAnts.append(antnumsAll[i])
+    if plotRatios is True:
+        if len(pols) == 4:
+            data['xx-xy'] = np.subtract(data['xx'],data['xy'])
+            data['xx-yx'] = np.subtract(data['xx'],data['yx'])
+            data['yy-xy'] = np.subtract(data['yy'],data['xy'])
+            data['yy-yx'] = np.subtract(data['yy'],data['yx'])
+        else:
+            print('Can only calculate differences if cross pols were specified')
     return data, badAnts
 
 
-def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logScale=False):
+def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logScale=False,plotRatios=False):
     """
     Plots a matrix representing the phase correlation of each baseline.
     
@@ -660,6 +792,12 @@ def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logSc
     power = np.empty((nantsTotal,nantsTotal))
     fig, axs = plt.subplots(2,2,figsize=(16,16))
     dirs = ['NN','EE','NE','EN']
+    cmap='plasma'
+    if plotRatios is True:
+        pols = ['xx-xy','yy-xy','xx-yx','yy-yx']
+        dirs=pols
+        vminIn=-1
+        cmap='seismic'
     loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
     jd = uv.time_array[0]
     t = Time(jd,format='jd',location=loc)
@@ -673,9 +811,9 @@ def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logSc
         pol = pols[p]
         nants = len(antnumsAll)
         if logScale is True:
-            im = axs[i][p%2].imshow(data[pol],cmap='plasma',origin='upper',extent=[0.5,nantsTotal+.5,0.5,nantsTotal+0.5],norm=LogNorm(vmin=vminIn, vmax=vmaxIn))
+            im = axs[i][p%2].imshow(data[pol],cmap=cmap,origin='upper',extent=[0.5,nantsTotal+.5,0.5,nantsTotal+0.5],norm=LogNorm(vmin=vminIn, vmax=vmaxIn))
         else:
-            im = axs[i][p%2].imshow(data[pol],cmap='plasma',origin='upper',extent=[0.5,nantsTotal+.5,0.5,nantsTotal+0.5],vmin=vminIn, vmax=vmaxIn)
+            im = axs[i][p%2].imshow(data[pol],cmap=cmap,origin='upper',extent=[0.5,nantsTotal+.5,0.5,nantsTotal+0.5],vmin=vminIn, vmax=vmaxIn)
         axs[i][p%2].set_xticks(np.arange(0,nantsTotal)+1)
         axs[i][p%2].set_xticklabels(antnumsAll,rotation=90,fontsize=6)
         axs[i][p%2].xaxis.set_ticks_position('top')
@@ -713,6 +851,54 @@ def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logSc
     plt.show()
     plt.close()
     
+def plot_single_matrix(uv,data,vminIn=0,vmaxIn=1,nodes='auto',logScale=False):
+    if nodes=='auto':
+        nodeDict, antDict, inclNodes = generate_nodeDict(uv)
+    nantsTotal = len(uv.get_ants())
+    power = np.empty((nantsTotal,nantsTotal))
+    fig, axs = plt.subplots(1,1,figsize=(16,16))
+    loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
+    jd = uv.time_array[0]
+    t = Time(jd,format='jd',location=loc)
+    lst = round(t.sidereal_time('mean').hour,2)
+    t.format='fits'
+    antnumsAll = sort_antennas(uv)
+    nants = len(antnumsAll)
+    if logScale is True:
+        im = axs[0][0].imshow(data[pol],cmap='plasma',origin='upper',
+                                extent=[0.5,nantsTotal+.5,0.5,nantsTotal+0.5],norm=LogNorm(vmin=vminIn, vmax=vmaxIn))
+    else:
+        im = axs[0][0].imshow(data[pol],cmap='plasma',origin='upper',extent=
+                                [0.5,nantsTotal+.5,0.5,nantsTotal+0.5],vmin=vminIn, vmax=vmaxIn)
+    axs[0][0].set_xticks(np.arange(0,nantsTotal)+1)
+    axs[0][0].set_xticklabels(antnumsAll,rotation=90,fontsize=6)
+    axs[0][0].xaxis.set_ticks_position('top')
+    axs[0][0].set_title('polarization: ' + dirs[p] + '\n')
+    n=0
+    for node in sorted(inclNodes):
+        n += len(nodeDict[node]['ants'])
+        axs[0][0].axhline(len(antnumsAll)-n+.5,lw=4)
+        axs[0][0].axvline(n+.5,lw=4)
+        axs[0][0].text(n-len(nodeDict[node]['ants'])/2,-.5,node)
+    axs[0][0].text(.42,-.05,'Node Number',transform=axs[0][0].transAxes)
+    n=0
+    for node in sorted(inclNodes):
+        n += len(nodeDict[node]['ants'])
+        axs[0][0].text(nantsTotal+1,nantsTotal-n+len(nodeDict[node]['ants'])/2,node)
+    axs[0][0].text(1.05,0.4,'Node Number',rotation=270,transform=axs[0][0].transAxes)
+    axs[0][0].set_yticks(np.arange(nantsTotal,0,-1))
+    axs[0][0].set_yticklabels(antnumsAll,fontsize=6)
+    axs[0][0].set_ylabel('Antenna Number')
+    axs[0][0].text(1.05,0.4,'Node Number',rotation=270,transform=axs[0][0].transAxes)
+    cbar_ax = fig.add_axes([0.98,0.18,0.015,0.6])
+    cbar_ax.set_xlabel('|V|', rotation=0)
+    cbar = fig.colorbar(im, cax=cbar_ax)
+    fig.suptitle('Correlation Matrix - JD: %s, LST: %.0fh' % (str(jd),np.round(lst,0)))
+    fig.subplots_adjust(top=1.28,wspace=0.05,hspace=1.1)
+    fig.tight_layout(pad=2)
+    plt.show()
+    plt.close()
+    
 def get_hourly_files(uv, HHfiles, jd):
     """
     Generates a list of files spaced one hour apart throughout a night of observation, and the times those files were observed.
@@ -735,8 +921,9 @@ def get_hourly_files(uv, HHfiles, jd):
     """
     use_lsts = []
     use_files = []
+    use_file_inds = []
     loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
-    for file in HHfiles:
+    for i,file in enumerate(HHfiles):
         try:
             dat = UVData()
             dat.read(file, read_data=False)
@@ -752,10 +939,12 @@ def get_hourly_files(uv, HHfiles, jd):
                 if np.abs((lst-np.round(lst,0))) < abs((use_lsts[-1]-np.round(lst,0))):
                     use_lsts[-1] = lst
                     use_files[-1] = file
+                    use_file_inds[-1] = i
             else:
                 use_lsts.append(lst)
                 use_files.append(file)
-    return use_files, use_lsts
+                use_file_inds.append(i)
+    return use_files, use_lsts, use_file_inds
 
 def get_baseline_groups(uv, bl_groups=[(14,0,'14m E-W'),(29,0,'29m E-W'),(14,-11,'14m NW-SE'),(14,11,'14m SW-NE')],
                        use_ants='auto'):
@@ -794,7 +983,7 @@ def get_baseline_groups(uv, bl_groups=[(14,0,'14m E-W'),(29,0,'29m E-W'),(14,-11
 
     
 def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='auto',badThresh=0.35,pols=['xx','yy'],bl_type=(14,0,'14m E-W'),
-                                        removeBadAnts=False, plotMatrix=True,mat_pols=['xx','yy','xy','yx']):
+                                        removeBadAnts=False, plotMatrix=True,mat_pols=['xx','yy','xy','yx'],plotRatios=False):
     """
     Calculates the average correlation metric for a set of redundant baseline groups at one hour intervals throughout a night of observation.
     
@@ -826,11 +1015,18 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='auto',badThresh=
     bad_antennas: List
         Antenna numbers flagged as bad based on badThresh parameter.
     """
-    files, lsts = get_hourly_files(uv, HHfiles, jd)
+    files, lsts, inds = get_hourly_files(uv, HHfiles, jd)
     if use_ants == 'auto':
         use_ants = uv.get_ants()
-    nTimes = len(files)
-    plotTimes = [0,nTimes//2,nTimes-1]
+    if plotRatios is True:
+        files = [files[len(files)//2]]
+        nTimes=1
+    else:
+        nTimes = len(files)
+    if nTimes > 3:
+        plotTimes = [0,nTimes//2,nTimes-1]
+    else:
+        plotTimes = np.arange(0,nTimes,1)
     nodeDict, antDict, inclNodes = generate_nodeDict(uv)
     JD = math.floor(uv.time_array[0])
     bad_antennas = []
@@ -839,22 +1035,33 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='auto',badThresh=
     result = {}
     for f in range(nTimes):
         file = files[f]
+        ind = inds[f]
         sm = UVData()
         df = UVData()
         try:
+#             print(f'Trying to read {file}')
             sm.read(file, skip_bad_files=True, antenna_nums=use_ants)
-        except:
-            print(f'WARNING: unable to read {file}')
-            continue
-        try:
             dffile = '%sdiff%s' % (file[0:-8],file[-5:])
             df.read(dffile, skip_bad_files=True, antenna_nums=use_ants)
         except:
-            print(f'WARNING: unable to read {dffile}')
-            continue
-        matrix, badAnts = calcEvenOddAmpMatrix(sm,df,nodes='auto',pols=mat_pols,badThresh=badThresh)
+            i = -5
+            read = False
+            while i<5 and read==False:
+                try:
+                    file = HHfiles[ind+i]
+#                     print(f'trying to read {file}')
+                    sm.read(file, skip_bad_files=True, antenna_nums=use_ants)
+                    dffile = '%sdiff%s' % (file[0:-8],file[-5:])
+                    df.read(dffile, skip_bad_files=True, antenna_nums=use_ants)
+                    read = True
+                except:
+                    i += 1
+            if read == False:
+                print(f'WARNING: unable to read {file}')
+                continue
+        matrix, badAnts = calcEvenOddAmpMatrix(sm,df,nodes='auto',pols=mat_pols,badThresh=badThresh,plotRatios=plotRatios)
         if plotMatrix is True and f in plotTimes:
-            plotCorrMatrix(sm, matrix, pols=mat_pols, nodes='auto')
+            plotCorrMatrix(sm, matrix, pols=mat_pols, nodes='auto',plotRatios=plotRatios)
         for group in bl_type:
             medians = {
                 'inter' : {},
@@ -863,7 +1070,7 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='auto',badThresh=
             for pol in pols:
                 medians['inter'][pol] = []
                 medians['intra'][pol] = []
-            if file == files[0]:
+            if group[2] not in result.keys():
                 result[group[2]] = {
                     'inter' : {},
                     'intra' : {}
@@ -1149,6 +1356,63 @@ def sort_antennas(uv):
         for ant in ants_sorted:
             sortedAntennas.append(ant)
     return sortedAntennas
+
+def plot_crosses(uvd, ref_ant):
+    ants = uvd.get_ants()
+    freqs = (uvd.freq_array[0])*10**(-6)
+    times = uvd.time_array
+    lsts = uvd.lst_array
+    
+    Nants = len(ants)
+#     Nside = int(np.ceil(np.sqrt(Nants)))*3
+    Nside = 4
+    Yside = int(np.ceil(float(Nants)/Nside))
+    
+    t_index = 0
+    jd = times[t_index]
+    utc = Time(jd, format='jd').datetime
+
+    xlim = (np.min(freqs), np.max(freqs))
+    ylim = (60, 90)
+
+    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2, Nside*60))
+
+    fig.suptitle("JD = {0}, time = {1} UTC".format(jd, utc), fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.subplots_adjust(left=.1, bottom=.1, right=.9, top=.9, wspace=0.05, hspace=0.2)
+
+    k = 0
+    for i in range(Yside):
+        for j in range(Nside):
+            ax = axes[i,j]
+            ax.set_xlim(xlim)
+#             ax.set_ylim(ylim)
+            if k < Nants:
+                px, = ax.plot(freqs, 10*np.log10(np.abs(np.mean(uvd.get_data((ants[k], ref_ant, 'xx')),axis=0))), color='red', alpha=0.75, linewidth=1)
+                py, = ax.plot(freqs, 10*np.log10(np.abs(np.mean(uvd.get_data((ants[k], ref_ant, 'yy')),axis=0))), color='darkorange', alpha=0.75, linewidth=1)
+                pxy, = ax.plot(freqs, 10*np.log10(np.abs(np.mean(uvd.get_data((ants[k], ref_ant, 'xy')),axis=0))), color='royalblue', alpha=0.75, linewidth=1)
+                pyx, = ax.plot(freqs, 10*np.log10(np.abs(np.mean(uvd.get_data((ants[k], ref_ant, 'yx')),axis=0))), color='darkviolet', alpha=0.75, linewidth=1)
+            
+                ax.grid(False, which='both')
+                ax.set_title(str(ants[k]), fontsize=14)
+            
+                if k == 0:
+                    ax.legend([px, py, pxy, pyx], ['XX', 'YY', 'XY','YX'])
+            
+            else:
+                ax.axis('off')
+            if j != 0:
+                ax.set_yticklabels([])
+            else:
+                [t.set_fontsize(10) for t in ax.get_yticklabels()]
+                ax.set_ylabel(r'$10\cdot\log_{10}$ amplitude', fontsize=10)
+            if i != Yside-1:
+                ax.set_xticklabels([])
+            else:
+                [t.set_fontsize(10) for t in ax.get_xticklabels()]
+                ax.set_xlabel('freq (MHz)', fontsize=10)
+            k += 1
+    fig.show()
 
 def clean_ds(HHfiles, difffiles, bls, area=1000., tol=1e-9, skip_wgts=0.2): 
     
