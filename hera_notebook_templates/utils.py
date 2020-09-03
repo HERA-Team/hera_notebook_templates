@@ -282,7 +282,9 @@ def plot_wfs(uvd, pol):
 def plot_mean_subtracted_wfs(uvd, use_ants, pols=['xx','yy']):
     freqs = (uvd.freq_array[0])*1e-6
     times = uvd.time_array
-    lsts = np.unique(uvd.lst_array*3.819719)
+    lsts = uvd.lst_array*3.819719
+    inds = np.unique(lsts,return_index=True)[1]
+    lsts = [lsts[ind] for ind in sorted(inds)]
     ants = sorted(use_ants)
     Nants = len(ants) 
     pol_labels = ['NN','EE']
@@ -304,7 +306,7 @@ def plot_mean_subtracted_wfs(uvd, use_ants, pols=['xx','yy']):
                 ax.set_yticklabels([])
             else:
                 yticks = [int(i) for i in np.linspace(0,len(lsts)-1,6)]
-                yticklabels = np.around(lsts[yticks],1)
+                yticklabels = [np.around(lsts[ytick],1) for ytick in yticks]
                 [t.set_fontsize(12) for t in ax.get_yticklabels()]
                 ax.set_ylabel('Time(LST)', fontsize=10)
                 ax.set_yticks(yticks)
