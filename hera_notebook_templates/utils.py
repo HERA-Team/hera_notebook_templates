@@ -27,25 +27,6 @@ from matplotlib.lines import Line2D
 warnings.filterwarnings('ignore')
 
 
-def plot_crossed(uv,use_ants):
-    rats = []
-    shp = np.shape(uv.data_array)
-    ntimes = np.unique(uv.time_array)
-    nbls = uv.Nbls
-    dat = np.reshape(uv.data_array,(uv.Ntimes,uv.Nbls,uv.Nspws,uv.Nfreqs,uv.Npols))
-#     for ant in use_ants:
-#         xx = uv.get_data(ant,ant,'xx')
-#         yy = uv.get_data(ant,ant,'yy')
-#         xy = uv.get_data(ant,ant,'xy')
-#         yx = uv.get_data(ant,ant,'yx')
-#         t = xy + yx
-#         b = xx + yy
-#         rat = np.divide(t,b)
-#         rats.append(np.nanmean(rat))
-    fig = plt.figure(figsize=(8,8))
-    plt.hist(rats)
-    plt.show()
-    plt.close()
 
 def load_data(data_path,JD):
     HHfiles = sorted(glob.glob("{0}/zen.{1}.*.sum.uvh5".format(data_path,JD)))
@@ -106,13 +87,13 @@ def plot_autos(uvdx, uvdy):
     status_colors = {
         'dish_maintenance' : 'salmon',
         'dish_ok' : 'red',
-        'RF_maintenance' : 'peachpuff',
-        'RF_ok' : 'darkorange',
+        'RF_maintenance' : 'lightskyblue',
+        'RF_ok' : 'royalblue',
         'digital_maintenance' : 'plum',
-        'digital_ok' : 'darkorchid',
+        'digital_ok' : 'mediumpurple',
         'calibration_maintenance' : 'lightgreen',
         'calibration_ok' : 'green',
-        'calibration_triage' : 'cyan'}
+        'calibration_triage' : 'lime'}
     h = cm_active.ActiveData(at_date=jd)
     h.load_apriori()
     
@@ -124,13 +105,15 @@ def plot_autos(uvdx, uvdy):
         labels.append(s)
 
     xlim = (np.min(freqs), np.max(freqs))
-    ylim = (60, 90)
+    ylim = (50, 90)
 
-    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2, Nside*3))
+    fig, axes = plt.subplots(Yside, Nside, figsize=(16,Yside*3))
 
-    fig.suptitle("JD = {0}, time = {1} UTC".format(jd, utc), fontsize=10)
+    ptitle = 1.92/(Yside*3)
+    fig.suptitle("JD = {0}, time = {1} UTC".format(jd, utc), fontsize=10,y=1+ptitle)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.subplots_adjust(left=.1, bottom=.1, right=.9, top=.9, wspace=0.05, hspace=0.3)
+    fig.subplots_adjust(left=.1, bottom=.1, right=.9, top=1, wspace=0.05, hspace=0.3)
+    fig.legend(custom_lines,labels,bbox_to_anchor=(0.6,.98),ncol=3)
     k = 0
     for i,n in enumerate(inclNodes):
         ants = nodes[n]['ants']
@@ -163,120 +146,105 @@ def plot_autos(uvdx, uvdy):
         for k in range(j,maxants):
             axes[i,k].axis('off')
         axes[i,maxants-1].annotate(f'Node {n}', (1.1,.3),xycoords='axes fraction',rotation=270)
-    fig.legend(custom_lines,labels,bbox_to_anchor=(0.6,0.9),ncol=3)
-    fig.show()
-    
-def plot_crosses(uvd, ref_ant):
-    ants = uvd.get_ants()
-    freqs = (uvd.freq_array[0])*10**(-6)
-    times = uvd.time_array
-    lsts = uvd.lst_array
-    
-    Nants = len(ants)
-#     Nside = int(np.ceil(np.sqrt(Nants)))*3
-    Nside = 4
-    Yside = int(np.ceil(float(Nants)/Nside))
-    
-    t_index = 0
-    jd = times[t_index]
-    utc = Time(jd, format='jd').datetime
-
-    xlim = (np.min(freqs), np.max(freqs))
-    ylim = (60, 90)
-
-    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2, Nside*60))
-
-    fig.suptitle("JD = {0}, time = {1} UTC".format(jd, utc), fontsize=10)
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.subplots_adjust(left=.1, bottom=.1, right=.9, top=.9, wspace=0.05, hspace=0.2)
-
-    k = 0
-    for i in range(Yside):
-        for j in range(Nside):
-            ax = axes[i,j]
-            ax.set_xlim(xlim)
-#             ax.set_ylim(ylim)
-            if k < Nants:
-                px, = ax.plot(freqs, 10*np.log10(np.abs(np.mean(uvd.get_data((ants[k], ref_ant, 'xx')),axis=0))), color='red', alpha=0.75, linewidth=1)
-                py, = ax.plot(freqs, 10*np.log10(np.abs(np.mean(uvd.get_data((ants[k], ref_ant, 'yy')),axis=0))), color='darkorange', alpha=0.75, linewidth=1)
-                pxy, = ax.plot(freqs, 10*np.log10(np.abs(np.mean(uvd.get_data((ants[k], ref_ant, 'xy')),axis=0))), color='royalblue', alpha=0.75, linewidth=1)
-                pyx, = ax.plot(freqs, 10*np.log10(np.abs(np.mean(uvd.get_data((ants[k], ref_ant, 'yx')),axis=0))), color='darkviolet', alpha=0.75, linewidth=1)
-            
-                ax.grid(False, which='both')
-                ax.set_title(str(ants[k]), fontsize=14)
-            
-                if k == 0:
-                    ax.legend([px, py, pxy, pyx], ['XX', 'YY', 'XY','YX'])
-            
-            else:
-                ax.axis('off')
-            if j != 0:
-                ax.set_yticklabels([])
-            else:
-                [t.set_fontsize(10) for t in ax.get_yticklabels()]
-                ax.set_ylabel(r'$10\cdot\log_{10}$ amplitude', fontsize=10)
-            if i != Yside-1:
-                ax.set_xticklabels([])
-            else:
-                [t.set_fontsize(10) for t in ax.get_xticklabels()]
-                ax.set_xlabel('freq (MHz)', fontsize=10)
-            k += 1
     fig.show()
     
 def plot_wfs(uvd, pol):
     amps = np.abs(uvd.data_array[:, :, :, pol].reshape(uvd.Ntimes, uvd.Nants_data, uvd.Nfreqs, 1))
-    
+    nodes, antDict, inclNodes = generate_nodeDict(uvd)
     ants = uvd.get_ants()
+    sorted_ants = sort_antennas(uvd)
     freqs = (uvd.freq_array[0])*10**(-6)
     times = uvd.time_array
     lsts = uvd.lst_array*3.819719
+    inds = np.unique(lsts,return_index=True)[1]
+    lsts = [lsts[ind] for ind in sorted(inds)]
+    maxants = 0
+    polnames = ['xx','yy']
+    for node in nodes:
+        n = len(nodes[node]['ants'])
+        if n>maxants:
+            maxants = n
     
     Nants = len(ants)
-    Nside = int(np.ceil(np.sqrt(Nants)))
-    Yside = int(np.ceil(float(Nants)/Nside))
+    Nside = maxants
+    Yside = len(inclNodes)
     
     t_index = 0
     jd = times[t_index]
     utc = Time(jd, format='jd').datetime
     
+    status_colors = {
+        'dish_maintenance' : 'salmon',
+        'dish_ok' : 'red',
+        'RF_maintenance' : 'lightskyblue',
+        'RF_ok' : 'royalblue',
+        'digital_maintenance' : 'plum',
+        'digital_ok' : 'mediumpurple',
+        'calibration_maintenance' : 'lightgreen',
+        'calibration_ok' : 'green',
+        'calibration_triage' : 'lime'}
+    h = cm_active.ActiveData(at_date=jd)
+    h.load_apriori()
     
-    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2,Nside*2))
+    custom_lines = []
+    labels = []
+    for s in status_colors.keys():
+        c = status_colors[s]
+        custom_lines.append(Line2D([0],[0],color=c,lw=2))
+        labels.append(s)
+    ptitle = 1.92/(Yside*3)
+    fig, axes = plt.subplots(Yside, Nside, figsize=(16,Yside*3))
     if pol == 0:
-        fig.suptitle("waterfalls from {0} -- {1} North Polarization".format(times[0], times[-1]), fontsize=14)
+        fig.suptitle("North Polarization", fontsize=14, y=1+ptitle)
     else:
-        fig.suptitle("waterfalls from {0} -- {1} East Polarization".format(times[0], times[-1]), fontsize=14)
+        fig.suptitle("East Polarization", fontsize=14, y=1+ptitle)
+    fig.legend(custom_lines,labels,bbox_to_anchor=(0.7,1),ncol=3)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.subplots_adjust(left=.1, bottom=.1, right=.9, top=.9, wspace=0.05, hspace=0.2)
+    fig.subplots_adjust(left=0, bottom=.1, right=.9, top=1, wspace=0.1, hspace=0.3)
+    vmin = 6.5
+    vmax = 8
 
-    k = 0
-    for i in range(Yside):
-        for j in range(Nside):
+    for i,n in enumerate(inclNodes):
+        ants = nodes[n]['ants']
+        j = 0
+        for _,a in enumerate(sorted_ants):
+            if a not in ants:
+                continue
+            status = h.apriori[f'HH{a}:A'].status
             ax = axes[i,j]
-            if k < Nants:
-                auto_bl = (ants[k], ants[k])
-                im = ax.imshow(np.log10(np.abs(amps[:, k , :, 0])), 
-                               vmin = 6.5, vmax = 8, aspect='auto', 
-                               extent=[freqs[0], freqs[-1], np.max(lsts), np.min(lsts)])
-        
-                ax.set_title(str(ants[k]), fontsize=10)
+            dat = uvd.get_data(a,a,polnames[pol])
+            im = ax.imshow(np.log10(np.abs(dat)), 
+                           vmin = vmin, vmax = vmax, aspect='auto')
+            ax.set_title(str(a), fontsize=10,backgroundcolor=status_colors[status])
+            if i == len(inclNodes)-1:
+                xticks = [int(i) for i in np.linspace(0,len(freqs)-1,3)]
+                xticklabels = np.around(freqs[xticks],0)
+                ax.set_xticks(xticks)
+                ax.set_xticklabels(xticklabels)
+                ax.set_xlabel('Freq (MHz)', fontsize=10)
+                [t.set_rotation(70) for t in ax.get_xticklabels()]
             else:
-                ax.axis('off')
+                ax.set_xticklabels([])
             if j != 0:
                 ax.set_yticklabels([])
             else:
+                yticks = [int(i) for i in np.linspace(0,len(lsts)-1,6)]
+                yticklabels = [np.around(lsts[ytick],1) for ytick in yticks]
                 [t.set_fontsize(12) for t in ax.get_yticklabels()]
                 ax.set_ylabel('Time(LST)', fontsize=10)
-            if i != Yside-1:
-                ax.set_xticklabels([])
-            else:
-                [t.set_fontsize(10) for t in ax.get_xticklabels()]
-                [t.set_rotation(25) for t in ax.get_xticklabels()]
-                ax.xaxis.set_major_formatter(FormatStrFormatter('%.3f'))
-                ax.set_xlabel('Frequency (MHz)', fontsize=10)
-            k += 1
-        
-    cbar_ax=fig.add_axes([0.95,0.15,0.02,0.7])        
-    fig.colorbar(im, cax=cbar_ax)
+                ax.set_yticks(yticks)
+                ax.set_yticklabels(yticklabels)
+                ax.set_ylabel('Time(LST)', fontsize=10)
+            j += 1
+        for k in range(j,maxants):
+            axes[i,k].axis('off')
+        pos = ax.get_position()
+        cbar_ax=fig.add_axes([0.91,pos.y0,0.01,pos.height])        
+        cbar = fig.colorbar(im, cax=cbar_ax)
+        cbar.set_label(f'Node {n}',rotation=270, labelpad=15)
+#         cbarticks = [np.around(x,1) for x in np.linspace(vmin,vmax,7)[i] for i in cbar.get_ticks()]
+#         cbar.set_ticklabels(cbarticks)
+#         axes[i,maxants-1].annotate(f'Node {n}', (.97,pos.y0+.03),xycoords='figure fraction',rotation=270)
     fig.show()
     
 def plot_mean_subtracted_wfs(uvd, use_ants, pols=['xx','yy']):
@@ -1396,6 +1364,63 @@ def sort_antennas(uv):
         for ant in ants_sorted:
             sortedAntennas.append(ant)
     return sortedAntennas
+
+def plot_crosses(uvd, ref_ant):
+    ants = uvd.get_ants()
+    freqs = (uvd.freq_array[0])*10**(-6)
+    times = uvd.time_array
+    lsts = uvd.lst_array
+    
+    Nants = len(ants)
+#     Nside = int(np.ceil(np.sqrt(Nants)))*3
+    Nside = 4
+    Yside = int(np.ceil(float(Nants)/Nside))
+    
+    t_index = 0
+    jd = times[t_index]
+    utc = Time(jd, format='jd').datetime
+
+    xlim = (np.min(freqs), np.max(freqs))
+    ylim = (60, 90)
+
+    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2, Nside*60))
+
+    fig.suptitle("JD = {0}, time = {1} UTC".format(jd, utc), fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.subplots_adjust(left=.1, bottom=.1, right=.9, top=.9, wspace=0.05, hspace=0.2)
+
+    k = 0
+    for i in range(Yside):
+        for j in range(Nside):
+            ax = axes[i,j]
+            ax.set_xlim(xlim)
+#             ax.set_ylim(ylim)
+            if k < Nants:
+                px, = ax.plot(freqs, 10*np.log10(np.abs(np.mean(uvd.get_data((ants[k], ref_ant, 'xx')),axis=0))), color='red', alpha=0.75, linewidth=1)
+                py, = ax.plot(freqs, 10*np.log10(np.abs(np.mean(uvd.get_data((ants[k], ref_ant, 'yy')),axis=0))), color='darkorange', alpha=0.75, linewidth=1)
+                pxy, = ax.plot(freqs, 10*np.log10(np.abs(np.mean(uvd.get_data((ants[k], ref_ant, 'xy')),axis=0))), color='royalblue', alpha=0.75, linewidth=1)
+                pyx, = ax.plot(freqs, 10*np.log10(np.abs(np.mean(uvd.get_data((ants[k], ref_ant, 'yx')),axis=0))), color='darkviolet', alpha=0.75, linewidth=1)
+            
+                ax.grid(False, which='both')
+                ax.set_title(str(ants[k]), fontsize=14)
+            
+                if k == 0:
+                    ax.legend([px, py, pxy, pyx], ['XX', 'YY', 'XY','YX'])
+            
+            else:
+                ax.axis('off')
+            if j != 0:
+                ax.set_yticklabels([])
+            else:
+                [t.set_fontsize(10) for t in ax.get_yticklabels()]
+                ax.set_ylabel(r'$10\cdot\log_{10}$ amplitude', fontsize=10)
+            if i != Yside-1:
+                ax.set_xticklabels([])
+            else:
+                [t.set_fontsize(10) for t in ax.get_xticklabels()]
+                ax.set_xlabel('freq (MHz)', fontsize=10)
+            k += 1
+    fig.show()
 
 def clean_ds(HHfiles, difffiles, bls, area=1000., tol=1e-9, skip_wgts=0.2): 
     
