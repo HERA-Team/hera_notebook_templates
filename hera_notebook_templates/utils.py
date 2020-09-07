@@ -94,6 +94,16 @@ def plot_autos(uvdx, uvdy):
         'calibration_maintenance' : 'lightgreen',
         'calibration_ok' : 'green',
         'calibration_triage' : 'lime'}
+    status_abbreviations = {
+        'dish_maintenance' : 'dish-M',
+        'dish_ok' : 'dish-OK',
+        'RF_maintenance' : 'RF-M',
+        'RF_ok' : 'RF-OK',
+        'digital_maintenance' : 'dig-M',
+        'digital_ok' : 'dig-OK',
+        'calibration_maintenance' : 'cal-M',
+        'calibration_ok' : 'cal-OK',
+        'calibration_triage' : 'cal-Tri'}
     h = cm_active.ActiveData(at_date=jd)
     h.load_apriori()
     
@@ -128,7 +138,8 @@ def plot_autos(uvdx, uvdy):
             px, = ax.plot(freqs, 10*np.log10(np.abs(uvdx.get_data((a, a))[t_index])), color='r', alpha=0.75, linewidth=1)
             py, = ax.plot(freqs, 10*np.log10(np.abs(uvdy.get_data((a, a))[t_index])), color='b', alpha=0.75, linewidth=1)
             ax.grid(False, which='both')
-            ax.set_title(str(a), fontsize=14, backgroundcolor=status_colors[status])
+            abb = status_abbreviations[status]
+            ax.set_title(f'{a} ({abb})', fontsize=14, backgroundcolor=status_colors[status])
             if k == 0:
                 ax.legend([px, py], ['NN', 'EE'])
             if i == len(inclNodes)-1:
@@ -183,6 +194,16 @@ def plot_wfs(uvd, pol):
         'calibration_maintenance' : 'lightgreen',
         'calibration_ok' : 'green',
         'calibration_triage' : 'lime'}
+    status_abbreviations = {
+        'dish_maintenance' : 'dish-M',
+        'dish_ok' : 'dish-OK',
+        'RF_maintenance' : 'RF-M',
+        'RF_ok' : 'RF-OK',
+        'digital_maintenance' : 'dig-M',
+        'digital_ok' : 'dig-OK',
+        'calibration_maintenance' : 'cal-M',
+        'calibration_ok' : 'cal-OK',
+        'calibration_triage' : 'cal-Tri'}
     h = cm_active.ActiveData(at_date=jd)
     h.load_apriori()
     
@@ -211,11 +232,12 @@ def plot_wfs(uvd, pol):
             if a not in ants:
                 continue
             status = h.apriori[f'HH{a}:A'].status
+            abb = status_abbreviations[status]
             ax = axes[i,j]
             dat = uvd.get_data(a,a,polnames[pol])
             im = ax.imshow(np.log10(np.abs(dat)), 
                            vmin = vmin, vmax = vmax, aspect='auto',interpolation='nearest')
-            ax.set_title(str(a), fontsize=10,backgroundcolor=status_colors[status])
+            ax.set_title(f'{a} ({abb})', fontsize=10,backgroundcolor=status_colors[status])
             if i == len(inclNodes)-1:
                 xticks = [int(i) for i in np.linspace(0,len(freqs)-1,3)]
                 xticklabels = np.around(freqs[xticks],0)
