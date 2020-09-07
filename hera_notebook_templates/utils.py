@@ -139,7 +139,7 @@ def plot_autos(uvdx, uvdy):
             py, = ax.plot(freqs, 10*np.log10(np.abs(uvdy.get_data((a, a))[t_index])), color='b', alpha=0.75, linewidth=1)
             ax.grid(False, which='both')
             abb = status_abbreviations[status]
-            ax.set_title(f'{a} ({abb})', fontsize=14, backgroundcolor=status_colors[status])
+            ax.set_title(f'{a} ({abb})', fontsize=10, backgroundcolor=status_colors[status])
             if k == 0:
                 ax.legend([px, py], ['NN', 'EE'])
             if i == len(inclNodes)-1:
@@ -269,7 +269,7 @@ def plot_wfs(uvd, pol):
 #         axes[i,maxants-1].annotate(f'Node {n}', (.97,pos.y0+.03),xycoords='figure fraction',rotation=270)
     fig.show()
     
-def plot_mean_subtracted_wfs(uvd, use_ants, pols=['xx','yy']):
+def plot_mean_subtracted_wfs(uvd, use_ants, jd, pols=['xx','yy']):
     freqs = (uvd.freq_array[0])*1e-6
     times = uvd.time_array
     lsts = uvd.lst_array*3.819719
@@ -279,19 +279,45 @@ def plot_mean_subtracted_wfs(uvd, use_ants, pols=['xx','yy']):
     Nants = len(ants) 
     pol_labels = ['NN','EE']
     
+    status_colors = {
+        'dish_maintenance' : 'salmon',
+        'dish_ok' : 'red',
+        'RF_maintenance' : 'lightskyblue',
+        'RF_ok' : 'royalblue',
+        'digital_maintenance' : 'plum',
+        'digital_ok' : 'mediumpurple',
+        'calibration_maintenance' : 'lightgreen',
+        'calibration_ok' : 'green',
+        'calibration_triage' : 'lime'}
+    status_abbreviations = {
+        'dish_maintenance' : 'dish-M',
+        'dish_ok' : 'dish-OK',
+        'RF_maintenance' : 'RF-M',
+        'RF_ok' : 'RF-OK',
+        'digital_maintenance' : 'dig-M',
+        'digital_ok' : 'dig-OK',
+        'calibration_maintenance' : 'cal-M',
+        'calibration_ok' : 'cal-OK',
+        'calibration_triage' : 'cal-Tri'}
+    h = cm_active.ActiveData(at_date=jd)
+    h.load_apriori()
+    
     fig, axes = plt.subplots(Nants, 2, figsize=(20,Nants*4))
     fig.suptitle('Mean Subtracted Waterfalls')
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.subplots_adjust(left=.1, bottom=.1, right=.85, top=.975, wspace=0.05, hspace=0.2)
 
     for i,ant in enumerate(ants):
+        status = h.apriori[f'HH{ant}:A'].status
+        abb = status_abbreviations[status]
+        color = status_colors[status]
         for j,pol in enumerate(pols):
             ax = axes[i,j]
             dat = np.log10(np.abs(uvd.get_data(ant,ant,pol)))
             ms = np.subtract(dat, np.nanmean(dat,axis=0))
             im = ax.imshow(ms, 
                            vmin = -0.07, vmax = 0.07, aspect='auto',interpolation='nearest')
-            ax.set_title(f'{ant} - {pol_labels[j]} pol', fontsize=10)
+            ax.set_title(f'{ant} - {pol_labels[j]} ({abb})', fontsize=10, backgroundcolor=color)
             if j != 0:
                 ax.set_yticklabels([])
             else:
