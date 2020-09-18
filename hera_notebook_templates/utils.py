@@ -65,6 +65,116 @@ def load_data(data_path,JD):
    
     return HHfiles, difffiles, HHautos, diffautos, uvd_xx1, uvd_yy1
 
+def plot_inspect_ants(uvd1,badAnts=[],flaggedAnts=[],use_ants='auto'):
+    status_use = ['digital_ok','calibration_maintenance','calibration_ok','calibration_triage']
+    if use_ants == 'auto':
+        use_ants = uvd1.get_ants()
+    h = cm_active.ActiveData(at_date=jd)
+    h.load_apriori()
+    inspectAnts = []
+    for ant in use_ants:
+        status = h.apriori[f'HH{ant}:A'].status
+        if ant in badAnts or ant in flaggedAnts:
+            if status in status_use:
+                inspectAnts.append(ant)
+    print('Antennas that require further inspection are:')
+    print(inspectAnts)
+    
+    for ant in inspectAnts:
+        auto_waterfall_lineplot(uvd1,ant)
+        
+    return inspectAnts
+    
+def auto_waterfall_lineplot(uv, file_number, ant,colorbar_min, colorbar_max, save=False, boundaries = False):
+    freq = uv.freq_array[0]*1e-6
+    fig = plt.figure(figsize=(20,20))
+    #can use gridspec instead of saying add_subplot(1,2,1) etc
+    gs = gridspec.GridSpec(2, 1, height_ratios=[2,1]) 
+    #creates waterfall subplot
+    waterfall= plt.subplot(gs[0])
+    #create time axis
+    jd_ax=plt.gca()
+    #there are a lot of redundancies in time_array, so to make sure that we have a list
+    #of unique times to work with, we start off by making a new array... not doing this will
+    #make things get messy. gave me a blank plot at first with a bunch of lines on the side
+    #before i did this.
+    times= np.unique(uv.time_array)
+    #create the plot. uv.get_data will get data from specified antennas
+    #colors.LogNorm() puts colors on log scale
+    im = plt.imshow(np.abs(uv.get_data((ant,ant, uv.polarization_array[0]))),norm=colors.LogNorm(), 
+                vmin=colorbar_min, vmax=colorbar_max, aspect='auto')
+    waterfall.set_title(str(file_number)+' Waterfall+Lineplot, Antenna '+str(ant))
+    # get an array of frequencies in MHz
+    freqs = uv.freq_array[0, :] / 1000000
+    xticks = np.arange(0, len(freqs), 120)
+    plt.xticks(xticks, labels =np.around(freqs[xticks],2))
+    jd_ax.set_ylabel('JD Time (days)')
+    #makes equally spaced ticks in increments of 100. since we are assuming time is pretty
+    #continuous, this will cover all times pretty well if we go from 0 to the length 
+    jd_yticks = np.arange(0,len(times),100)
+    #set_yticks takes a List of y-axis tick locations. its purpose is to set tick locations
+    jd_ax.set_yticks(jd_yticks)
+    #this function actually determines what the tickmarks will say.
+    jd_ax.set_yticklabels(np.around(times[jd_yticks],2))
+    #create second axis
+    lst_ax = jd_ax.twinx()
+    lst_ax.set_ylabel('LST Time (hour of the day)')
+    #lst_array is in radians, and we want it in *hours*.. rad*180/pi = degrees
+    #one hour= 15 degrees
+    lst_hours = (uv.lst_array*(180/np.pi))/(15)
+    #creates array of unique lsts
+    lsts= lst_hours.reshape(uv.Ntimes,uv.Nbls)
+    lsts = lsts[:,0]
+    #set the ticks of the lst axis to match the lst_array in hours
+    lst_yticks = np.arange(0,len(lsts),100)
+    lst_ax.set_yticks(lst_yticks)
+    lst_ax.set_yticklabels(np.around(lsts[lst_yticks],2))
+    #gives the lst_axis information about the jd_axis. stuff like the y-dimension of the data. 
+    #gets the axes to line up properly. will make it so that the tick-marks lining up, and the 
+    #zeroth entry of times[jd_yticks] lining up with the zeroth entry of lsts[lst_yticks]
+    lst_ax.set_ylim(jd_ax.get_ylim())
+    #makes it so that the second axis does not alter the structure of the figure
+    jd_ax.autoscale(False)
+    lst_ax.autoscale(False)
+    #creates line subplot and positions it according to gs[1]
+    line= plt.subplot(gs[1])
+    #drawing faint grey lines at boundaries
+    if boundaries == True:
+        channel_boundaries = [192,384,576,768,960,1152,1344]
+        freq_boundaries = []
+        for channel in channel_boundaries:
+            freq_boundary = freq[channel]
+            freq_boundaries.append(freq_boundary)
+        plt.axvline(freq_boundaries[0],0,1, color = '0.8')
+        plt.axvline(freq_boundaries[1],0,1, color = '0.8')
+        plt.axvline(freq_boundaries[2],0,1, color = '0.8')
+        plt.axvline(freq_boundaries[3],0,1, color = '0.8')
+        plt.axvline(freq_boundaries[4],0,1, color = '0.8')
+        plt.axvline(freq_boundaries[5],0,1, color = '0.8')
+        plt.axvline(freq_boundaries[6],0,1, color = '0.8')
+    averaged_data= np.abs(np.average(uv.get_data((ant,ant, uv.polarization_array[0])),0))
+    plt.plot(freq,averaged_data)
+    line.set_yscale('log')
+    line.set_xlabel('Frequency (MHz)')
+    line.set_ylabel('Power')
+    #sets the range of the graph to be the same range as waterfall plot
+    line.set_xlim(freq[0],freq[-1])
+    #makes waterfall x ticks invisible
+    plt.setp(waterfall.get_xticklabels(), visible=False)
+    #brings plots together
+    plt.subplots_adjust(hspace=.0)
+    #pad moves colorbar farther from plot
+    cbar = plt.colorbar(im, pad= 0.15, orientation = 'horizontal')
+    cbar.set_label('Power -->')
+    if save== False:
+        print('Fig not saved to file')
+    elif save == True:
+        plt.savefig('/lustre/aoc/projects/hera/amyers/gitrepos/monsterDetection/waterfalls/'+
+                        str(file_number)+'_WF_LP_ant'+str(ant))
+        print('Fig saved to file')
+    plt.show()
+    plt.close()
+
 def plot_autos(uvdx, uvdy):
     nodes, antDict, inclNodes = generate_nodeDict(uvdx)
     ants = uvdx.get_ants()
@@ -109,12 +219,12 @@ def plot_autos(uvdx, uvdy):
     h = cm_active.ActiveData(at_date=jd)
     h.load_apriori()
     
-    custom_lines = []
-    labels = []
-    for s in status_colors.keys():
-        c = status_colors[s]
-        custom_lines.append(Line2D([0],[0],color=c,lw=2))
-        labels.append(s)
+#     custom_lines = []
+#     labels = []
+#     for s in status_colors.keys():
+#         c = status_colors[s]
+#         custom_lines.append(Line2D([0],[0],color=c,lw=2))
+#         labels.append(s)
 
     xlim = (np.min(freqs), np.max(freqs))
     ylim = (50, 90)
@@ -125,7 +235,7 @@ def plot_autos(uvdx, uvdy):
     fig.suptitle("JD = {0}, time = {1} UTC".format(jd, utc), fontsize=10,y=1+ptitle)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.subplots_adjust(left=.1, bottom=.1, right=.9, top=1, wspace=0.05, hspace=0.3)
-    fig.legend(custom_lines,labels,bbox_to_anchor=(0.6,.98),ncol=3)
+#     fig.legend(custom_lines,labels,bbox_to_anchor=(0.6,.98),ncol=3)
     k = 0
     for i,n in enumerate(inclNodes):
         ants = nodes[n]['ants']
@@ -209,19 +319,19 @@ def plot_wfs(uvd, pol):
     h = cm_active.ActiveData(at_date=jd)
     h.load_apriori()
     
-    custom_lines = []
-    labels = []
-    for s in status_colors.keys():
-        c = status_colors[s]
-        custom_lines.append(Line2D([0],[0],color=c,lw=2))
-        labels.append(s)
+#     custom_lines = []
+#     labels = []
+#     for s in status_colors.keys():
+#         c = status_colors[s]
+#         custom_lines.append(Line2D([0],[0],color=c,lw=2))
+#         labels.append(s)
     ptitle = 1.92/(Yside*3)
     fig, axes = plt.subplots(Yside, Nside, figsize=(16,Yside*3))
     if pol == 0:
         fig.suptitle("North Polarization", fontsize=14, y=1+ptitle)
     else:
         fig.suptitle("East Polarization", fontsize=14, y=1+ptitle)
-    fig.legend(custom_lines,labels,bbox_to_anchor=(0.7,1),ncol=3)
+#     fig.legend(custom_lines,labels,bbox_to_anchor=(0.7,1),ncol=3)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.subplots_adjust(left=0, bottom=.1, right=.9, top=1, wspace=0.1, hspace=0.3)
     vmin = 6.5
@@ -270,6 +380,7 @@ def plot_wfs(uvd, pol):
 #         cbar.set_ticklabels(cbarticks)
 #         axes[i,maxants-1].annotate(f'Node {n}', (.97,pos.y0+.03),xycoords='figure fraction',rotation=270)
     fig.show()
+    
     
 def plot_mean_subtracted_wfs(uvd, use_ants, jd, pols=['xx','yy']):
     freqs = (uvd.freq_array[0])*1e-6
