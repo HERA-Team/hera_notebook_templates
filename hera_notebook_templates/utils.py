@@ -47,15 +47,18 @@ def load_data(data_path,JD):
     # Load data
     uvd_hh = UVData()
 
-    uvd_hh.read(hhfile1, skip_bad_files=True)
+    unread = True
+    while unread is True:
+        try:
+            uvd_hh.read(hhfile1, skip_bad_files=True)
+        except:
+            hhfile += 1
+            continue
+        unread = False
     uvd_xx1 = uvd_hh.select(polarizations = -5, inplace = False)
     uvd_xx1.ants = np.unique(np.concatenate([uvd_xx1.ant_1_array, uvd_xx1.ant_2_array]))
     # -5: 'xx', -6: 'yy', -7: 'xy', -8: 'yx'
 
-
-#     uvd_hh = UVData()
-
-#     uvd_hh.read(hhfile1, skip_bad_files=True) 
     uvd_yy1 = uvd_hh.select(polarizations = -6, inplace = False)
     uvd_yy1.ants = np.unique(np.concatenate([uvd_yy1.ant_1_array, uvd_yy1.ant_2_array]))
 
