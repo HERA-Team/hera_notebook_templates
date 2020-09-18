@@ -85,7 +85,7 @@ def plot_inspect_ants(uvd1,badAnts=[],flaggedAnts=[],use_ants='auto'):
         
     return inspectAnts
     
-def auto_waterfall_lineplot(uv, file_number, ant,colorbar_min, colorbar_max, save=False, boundaries = False):
+def auto_waterfall_lineplot(uv, ant,colorbar_min=0, colorbar_max=100):
     freq = uv.freq_array[0]*1e-6
     fig = plt.figure(figsize=(20,20))
     #can use gridspec instead of saying add_subplot(1,2,1) etc
