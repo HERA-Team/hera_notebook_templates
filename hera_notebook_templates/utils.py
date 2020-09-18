@@ -38,7 +38,6 @@ def load_data(data_path,JD):
     hhdifffile_bases = map(os.path.basename, difffiles)
 
     # choose one for single-file plots
-    file_index = np.min([len(HHfiles)-1, 20])
     hhfile1 = HHfiles[len(HHfiles)//2]
     difffile1 = difffiles[len(difffiles)//2]
     if len(HHfiles) != len(difffiles):
@@ -54,9 +53,9 @@ def load_data(data_path,JD):
     # -5: 'xx', -6: 'yy', -7: 'xy', -8: 'yx'
 
 
-    uvd_hh = UVData()
+#     uvd_hh = UVData()
 
-    uvd_hh.read(hhfile1, skip_bad_files=True) 
+#     uvd_hh.read(hhfile1, skip_bad_files=True) 
     uvd_yy1 = uvd_hh.select(polarizations = -6, inplace = False)
     uvd_yy1.ants = np.unique(np.concatenate([uvd_yy1.ant_1_array, uvd_yy1.ant_2_array]))
 
