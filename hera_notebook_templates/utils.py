@@ -25,9 +25,99 @@ import hera_qm
 from hera_mc import cm_active
 from matplotlib.lines import Line2D
 from matplotlib import colors
+import json
 warnings.filterwarnings('ignore')
 
 
+def read_template(pol='XX'):
+    if pol == 'XX':
+        polstr = 'north'
+    elif pol == 'YY':
+        polstr = 'east'
+    temp_path = f'/lustre/aoc/projects/hera/dstorer/Setup/hera_notebook_templates/hera_notebook_templates/templates/{polstr}_template.json'
+    with open(temp_path) as f:
+        data = json.load(f)
+    return data
+
+def flag_by_template(uvd,HHfiles,jd,use_ants='auto',pols=['XX','YY'],temp_norm=True):
+    use_files, use_lsts, use_file_inds = get_hourly_files(uvd,HHfiles,jd)
+    temp = {}
+    ant_dfs = {}
+    for pol in pols:
+        temp[pol] = read_template(pol)
+        ant_dfs[pol] = {}
+    if use_ants == 'auto':
+        use_ants = uvd.get_ants()
+    flaggedAnts = []
+    for i,lst in enumerate(use_lsts):
+        print(lst)
+        hdat = UVData()
+        hdat.read(use_files[i],antenna_nums=use_ants)
+        for pol in pols:
+            ant_dfs[pol][lst] = {}
+            ranges = np.asarray(temp[pol]['lst_ranges'][0])
+            ind = np.argwhere(ranges[:,0]<lst)[-1][0]
+            dat = np.abs(temp[pol][str(ind)])
+            if temp_norm is True:
+                medpower = np.nanmedian(np.log10(np.abs(hdat.data_array)))
+                medtemp = np.nanmedian(dat)
+                print(medpower)
+                print(medtemp)
+                norm = np.divide(medpower,medtemp)
+                print(norm)
+                dat = np.multiply(dat,norm)
+                fig = plt.figure(figsize=(8,8))
+#                 plt.plot(dat,label='temp')
+                plt.plot(dat,label='temp, log, no norm')
+#                 plt.plot(np.log10(dat),label='temp, log10')
+#                 plt.plot(hdat.get_data((25,25,pol))[0,:],label=f'25 - {pol}')
+#                 plt.plot(hdat.get_data((119,119,pol))[0,:],label=f'119 - {pol}')
+#                 plt.plot(hdat.get_data((73,73,pol))[0,:],label=f'73 - {pol}')
+#                 plt.plot(np.abs(hdat.get_data((26,26,pol))[0,:]),label=f'26 - {pol}, abs')
+                plt.plot(np.log10(hdat.get_data((25,25,pol))[0,:]),label=f'26 - {pol}')
+                plt.plot(np.log10(np.abs(hdat.get_data((26,26,pol))[0,:])),label=f'26 - {pol}')
+                plt.legend()         
+            for ant in use_ants:
+                d = np.abs(hdat.get_data((ant,ant,pol)))
+                d = np.average(d,axis=0)
+                df = np.abs(np.subtract(dat,d))
+                ant_dfs[pol][lst][ant] = np.nanmedian(df)
+            fig = plt.figure(figsize=(18,10))
+            cmap = plt.get_cmap('inferno')
+            sm = plt.cm.ScalarMappable(cmap=cmap,norm=plt.Normalize(vmin=0,vmax=1))
+            sm._A = []
+            ampmin=100000000000000
+            ampmax=0
+            for ant in use_ants:
+                amp = ant_dfs[pol][lst][ant]
+                if amp > ampmax: ampmax=amp
+                elif amp < ampmin: ampmin=amp
+            rang = ampmax-ampmin
+            for ant in use_ants:
+                idx = np.argwhere(hdat.antenna_numbers == ant)[0][0]
+                antPos = hdat.antenna_positions[idx]
+                amp = ant_dfs[pol][lst][ant]
+                if math.isnan(amp):
+                    marker="v"
+                    color="r"
+                    markersize=30
+                else:
+                    coloramp = cmap(float((amp-ampmin)/rang))
+                    color=coloramp
+                    marker="h"
+                    markersize=40
+                plt.plot(antPos[1],antPos[2],marker=marker,markersize=markersize,color=color)
+                if math.isnan(amp) or coloramp[0]>0.6:
+                    plt.text(antPos[1]-3,antPos[2],str(ant),color='black')
+                else:
+                    plt.text(antPos[1]-3,antPos[2],str(ant),color='white')
+            plt.title(f'{pol} pol, {lst} hours')
+            cbar = fig.colorbar(sm)
+            cbar.set_ticks([])
+            
+            
+    return ant_dfs
+    
 
 def load_data(data_path,JD):
     HHfiles = sorted(glob.glob("{0}/zen.{1}.*.sum.uvh5".format(data_path,JD)))
