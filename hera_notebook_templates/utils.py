@@ -154,7 +154,7 @@ def load_data(data_path,JD):
    
     return HHfiles, difffiles, HHautos, diffautos, uvd_xx1, uvd_yy1
 
-def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts=[],tempAnts=[],use_ants='auto'):
+def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts=[],tempAnts=[],crossedAnts=[],use_ants='auto'):
     status_use = ['RF_ok','digital_maintenance','digital_ok','calibration_maintenance','calibration_ok','calibration_triage']
     if use_ants == 'auto':
         use_ants = uvd1.get_ants()
@@ -163,7 +163,7 @@ def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts=[],tempAnts=[],use_ants='au
     inspectAnts = []
     for ant in use_ants:
         status = h.apriori[f'HH{ant}:A'].status
-        if ant in badAnts or ant in flaggedAnts.keys():
+        if ant in badAnts or ant in flaggedAnts.keys() or ant in crossedAnts:
             if status in status_use:
                 inspectAnts.append(ant)
         for k in tempAnts.keys():
@@ -177,6 +177,8 @@ def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts=[],tempAnts=[],use_ants='au
             inspectTitles[ant] = f'{inspectTitles[ant]} correlation matrix,'
         if ant in flaggedAnts.keys():
             inspectTitles[ant] = f'{inspectTitles[ant]} ant_metrics,'
+        if ant in crossedAnts:
+            inspectTitles[ant] = f'{inspectTitles[ant]} cross matrix,'
         try:
             for k in tempAnts.keys():
 #                 print(tempAnts[k])
@@ -1036,6 +1038,19 @@ def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.25, pl
             data['yy-yx'] = np.subtract(data['yy'],data['yx'])
         else:
             print('Can only calculate differences if cross pols were specified')
+        polAnts = {}
+        badAnts = []
+        subs = ['xx-xy','xx-yx','yy-xy','yy-yx']
+        for k in subs:
+            for i,ant in enumerate(antnumsAll):
+                dat = data[k][i,:]
+                if np.nanmedian(dat) < 0:
+                    if ant in polAnts.keys():
+                        polAnts[ant] = polAnts[ant] + 1
+                    else:
+                        polAnts[ant] = 1
+                    if polAnts[ant] == 4:
+                        badAnts.append(ant)  
     return data, badAnts
 
 
