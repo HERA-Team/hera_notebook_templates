@@ -26,6 +26,7 @@ from hera_mc import cm_active
 from matplotlib.lines import Line2D
 from matplotlib import colors
 import json
+from hera_notebook_templates.data import DATA_PATH
 warnings.filterwarnings('ignore')
 
 
@@ -34,7 +35,8 @@ def read_template(pol='XX'):
         polstr = 'north'
     elif pol == 'YY':
         polstr = 'east'
-    temp_path = f'/lustre/aoc/projects/hera/dstorer/Setup/hera_notebook_templates/hera_notebook_templates/templates/{polstr}_template.json'
+    temp_path = f'{DATA_PATH}/templates/{polstr}_template.json'
+#     f'/lustre/aoc/projects/hera/dstorer/Setup/hera_notebook_templates/hera_notebook_templates/templates/{polstr}_template.json'
     with open(temp_path) as f:
         data = json.load(f)
     return data
@@ -66,22 +68,8 @@ def flag_by_template(uvd,HHfiles,jd,use_ants='auto',pols=['XX','YY'],polDirs=['N
             if temp_norm is True:
                 medpower = np.nanmedian(np.log10(np.abs(hdat.data_array)))
                 medtemp = np.nanmedian(dat)
-#                 print(medpower)
-#                 print(medtemp)
                 norm = np.divide(medpower,medtemp)
-#                 print(norm)
-                dat = np.multiply(dat,norm)
-#                 fig = plt.figure(figsize=(8,8))
-# #                 plt.plot(dat,label='temp')
-#                 plt.plot(dat,label='temp, log, no norm')
-# #                 plt.plot(np.log10(dat),label='temp, log10')
-# #                 plt.plot(hdat.get_data((25,25,pol))[0,:],label=f'25 - {pol}')
-# #                 plt.plot(hdat.get_data((119,119,pol))[0,:],label=f'119 - {pol}')
-# #                 plt.plot(hdat.get_data((73,73,pol))[0,:],label=f'73 - {pol}')
-# #                 plt.plot(np.abs(hdat.get_data((26,26,pol))[0,:]),label=f'26 - {pol}, abs')
-#                 plt.plot(np.log10(hdat.get_data((25,25,pol))[0,:]),label=f'26 - {pol}')
-#                 plt.plot(np.log10(np.abs(hdat.get_data((26,26,pol))[0,:])),label=f'26 - {pol}')
-#                 plt.legend()         
+                dat = np.multiply(dat,norm)        
             for ant in use_ants:
                 d = np.log10(np.abs(hdat.get_data((ant,ant,pol))))
                 d = np.average(d,axis=0)
@@ -232,7 +220,7 @@ def auto_waterfall_lineplot(uv, ant, jd, pols=['xx','yy'], colorbar_min=1e6, col
     status = h.apriori[f'HH{ant}:A'].status
     freq = uv.freq_array[0]*1e-6
     fig = plt.figure(figsize=(20,12))
-    gs = gridspec.GridSpec(2, 2, height_ratios=[2,1])
+    gs = gridspec.GridSpec(3, 2, height_ratios=[2,0.7,1])
     it = 0
     pol_dirs = ['NN','EE']
     for p,pol in enumerate(pols):
@@ -267,18 +255,32 @@ def auto_waterfall_lineplot(uv, ant, jd, pols=['xx','yy'], colorbar_min=1e6, col
             lst_ax.autoscale(False)
             jd_ax.set_yticks([])
         line= plt.subplot(gs[it+2])
-        averaged_data= np.abs(np.average(uv.get_data((ant,ant, uv.polarization_array[0])),0))
+        averaged_data= np.abs(np.average(uv.get_data((ant,ant,pol)),0))
         plt.plot(freq,averaged_data)
         line.set_yscale('log')
-        line.set_xlabel('Frequency (MHz)')
+#         line.set_xlabel('Frequency (MHz)')
         if p == 0:
-            line.set_ylabel('Power')
+            line.set_ylabel('Night Average')
         else:
             line.set_yticks([])
         line.set_xlim(freq[0],freq[-1])
+        line.set_xticks([])
+        
+        line2 = plt.subplot(gs[it+4])
+        dat = uv.get_data((ant,ant,pol))
+        dat = np.abs(dat[len(dat)//2,:])
+        plt.plot(freq,dat)
+        line2.set_yscale('log')
+        line2.set_xlabel('Frequency (MHz)')
+        if p == 0:
+            line2.set_ylabel('Single Slice')
+        else:
+            line2.set_yticks([])
+        line2.set_xlim(freq[0],freq[-1])
+        
         plt.setp(waterfall.get_xticklabels(), visible=False)
         plt.subplots_adjust(hspace=.0)
-        cbar = plt.colorbar(im, pad= 0.15, orientation = 'horizontal')
+        cbar = plt.colorbar(im, pad= 0.2, orientation = 'horizontal')
         cbar.set_label('Power')
         it=1
     fig.suptitle(f'{ant} ({abb})', fontsize=10, backgroundcolor=status_colors[status],y=0.96)
