@@ -14,7 +14,8 @@ import sys
 import glob
 import uvtools as uvt
 from astropy.time import Time
-from astropy.coordinates import EarthLocation, SkyCoord, AltAz, Angle
+from astropy.coordinates import EarthLocation, AltAz, Angle
+from astropy.coordinates import SkyCoord as sc
 import pandas
 import warnings 
 import copy
@@ -27,6 +28,12 @@ from matplotlib.lines import Line2D
 from matplotlib import colors
 import json
 from hera_notebook_templates.data import DATA_PATH
+from astropy.io import fits
+import csv
+from astropy import units as u
+from astropy_healpix import HEALPix
+from astropy.coordinates import Galactic
+import healpy
 warnings.filterwarnings('ignore')
 
 
@@ -154,6 +161,93 @@ def load_data(data_path,JD):
    
     return HHfiles, difffiles, HHautos, diffautos, uvd_xx1, uvd_yy1
 
+def plot_sky_map(uvd,ra_pad=20,dec_pad=30,clip=True,fwhm=11,nx=600,ny=400,sources=[]):
+    map_path = f'{DATA_PATH}/haslam408_dsds_Remazeilles2014.fits'
+    hdulist = fits.open(map_path)
+
+    # Set up the HEALPix projection
+    nside = hdulist[1].header['NSIDE']
+    order = hdulist[1].header['ORDERING']
+    hp = HEALPix(nside=nside, order=order, frame=Galactic())
+    
+    #Get RA/DEC coords of observation
+    loc = EarthLocation.from_geocentric(*uvd.telescope_location, unit='m')
+    time_array = uvd.time_array
+    obstime_start = Time(time_array[0],format='jd',location=loc)
+    obstime_end = Time(time_array[-1],format='jd',location=loc)
+    zenith_start = sc(Angle(0, unit='deg'),Angle(90,unit='deg'),frame='altaz',obstime=obstime_start,location=loc)
+    zenith_start = zenith_start.transform_to('icrs')
+    zenith_end = sc(Angle(0, unit='deg'),Angle(90,unit='deg'),frame='altaz',obstime=obstime_end,location=loc)
+    zenith_end = zenith_end.transform_to('icrs')
+    lst_start = obstime_start.sidereal_time('mean').hour
+    lst_end = obstime_end.sidereal_time('mean').hour
+    start_coords = [zenith_start.ra.degree,zenith_start.dec.degree]
+    if start_coords[0] > 180:
+        start_coords[0] = start_coords[0] - 360
+    end_coords = [zenith_end.ra.degree,zenith_end.dec.degree]
+    if end_coords[0] > 180:
+        end_coords[0] = end_coords[0] - 360
+    
+    # Sample a 300x200 grid in RA/Dec
+    ra_range = [zenith_start.ra.degree-ra_pad, zenith_end.ra.degree+ra_pad]
+    dec_range = [zenith_start.dec.degree-ra_pad, zenith_end.dec.degree+ra_pad]
+    if clip == True:
+        ra = np.linspace(ra_range[0],ra_range[1], nx)
+        dec = np.linspace(dec_range[0],dec_range[1], ny)
+    else:
+        ra = np.linspace(-180,180,nx)
+        dec = np.linspace(-90,zenith_start.dec.degree+90,ny)
+    ra_grid, dec_grid = np.meshgrid(ra * u.deg, dec * u.deg)
+    
+    #Create alpha grid
+    alphas = np.ones(ra_grid.shape)
+    alphas = np.multiply(alphas,0.5)
+    ra_min = np.argmin(np.abs(np.subtract(ra,start_coords[0]-fwhm/2)))
+    ra_max = np.argmin(np.abs(np.subtract(ra,end_coords[0]+fwhm/2)))
+    dec_min = np.argmin(np.abs(np.subtract(dec,start_coords[1]-fwhm/2)))
+    dec_max = np.argmin(np.abs(np.subtract(dec,end_coords[1]+fwhm/2)))
+    alphas[dec_min:dec_max, ra_min:ra_max] = 1
+
+    # Set up Astropy coordinate objects
+    coords = sc(ra_grid.ravel(), dec_grid.ravel(), frame='icrs')
+
+    # Interpolate values
+    temperature = healpy.read_map(map_path)
+    tmap = hp.interpolate_bilinear_skycoord(coords, temperature)
+    tmap = tmap.reshape((ny, nx))
+    tmap = np.flip(tmap,axis=1)
+    alphas = np.flip(alphas,axis=1)
+
+    # Make a plot of the interpolated temperatures
+    plt.figure(figsize=(15, 8))
+    im = plt.imshow(tmap, extent=[ra[-1], ra[0], dec[0], dec[-1]], 
+                    cmap=plt.cm.viridis, aspect='auto', vmin=10,vmax=40,alpha=alphas,origin='lower')
+    plt.xlabel('RA (ICRS)')
+    plt.ylabel('DEC (ICRS)')
+    plt.hlines(y=start_coords[1]-fwhm/2,xmin=ra[-1],xmax=ra[0],linestyles='dashed')
+    plt.hlines(y=start_coords[1]+fwhm/2,xmin=ra[-1],xmax=ra[0],linestyles='dashed')
+    plt.vlines(x=start_coords[0],ymin=start_coords[1],ymax=dec[-1],linestyles='dashed')
+    plt.vlines(x=end_coords[0],ymin=start_coords[1],ymax=dec[-1],linestyles='dashed')
+    plt.annotate(np.around(lst_start,2),xy=(start_coords[0],dec[-1]),xytext=(0,8),
+                 fontsize=10,xycoords='data',textcoords='offset points',horizontalalignment='center')
+    plt.annotate(np.around(lst_end,2),xy=(end_coords[0],dec[-1]),xytext=(0,8),
+                 fontsize=10,xycoords='data',textcoords='offset points',horizontalalignment='center')
+    plt.annotate('LST (hours)',xy=(np.average([start_coords[0],end_coords[0]]),dec[-1]),
+                xytext=(0,22),fontsize=10,xycoords='data',textcoords='offset points',horizontalalignment='center')
+    for s in sources:
+        if s[1] > dec[0] and s[1] < dec[-1]:
+            if s[0] > 180:
+                s = (s[0]-360,s[1],s[2])
+            if s[2] == 'LMC' or s[2] == 'SMC':
+                plt.annotate(s[2],xy=(s[0],s[1]),xycoords='data',fontsize=8,xytext=(20,-20),
+                             textcoords='offset points',arrowprops=dict(facecolor='black', shrink=2,width=1,
+                                                                        headwidth=4))
+            else:
+                plt.scatter(s[0],s[1],c='k',s=6)
+                if len(s[2]) > 0:
+                    plt.annotate(s[2],xy=(s[0]+3,s[1]-4),xycoords='data',fontsize=6)
+    plt.show()
+
 def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts=[],tempAnts=[],crossedAnts=[],use_ants='auto'):
     status_use = ['RF_ok','digital_maintenance','digital_ok','calibration_maintenance','calibration_ok','calibration_triage']
     if use_ants == 'auto':
@@ -229,7 +323,16 @@ def auto_waterfall_lineplot(uv, ant, jd, pols=['xx','yy'], colorbar_min=1e6, col
         waterfall= plt.subplot(gs[it])
         jd_ax=plt.gca()
         times= np.unique(uv.time_array)
-        im = plt.imshow(np.abs(uv.get_data((ant,ant, pol))),norm=colors.LogNorm(), 
+        d = np.abs(uv.get_data((ant,ant, pol)))
+#         print(np.nonzero(d))
+#         print(np.shape(np.nonzero(d)))
+        if len(np.nonzero(d)[0])==0:
+            print('#########################################')
+            print(f'Data for antenna {ant} is entirely zeros')
+            print('#########################################')
+            plt.close()
+            return
+        im = plt.imshow(d,norm=colors.LogNorm(), 
                     aspect='auto')
         abb = status_abbreviations[status]
         waterfall.set_title(f'{pol_dirs[p]} pol')
@@ -1702,6 +1805,32 @@ def plot_crosses(uvd, ref_ant):
                 ax.set_xlabel('freq (MHz)', fontsize=10)
             k += 1
     fig.show()
+    
+def gather_source_list():
+    sources = []
+    sources.append((50.6750,-37.2083,'Fornax A'))
+    sources.append((201.3667,-43.0192,'Cen A'))
+    # sources.append((83.6333,22.0144,'Taurus A'))
+    sources.append((252.7833,4.9925,'Hercules A'))
+    sources.append((139.5250,-12.0947,'Hydra A'))
+    sources.append((79.9583,-45.7789,'Pictor A'))
+    sources.append((187.7042,12.3911,'Virgo A'))
+    sources.append((83.8208,-59.3897,'Orion A'))
+    sources.append((80.8958,-69.7561,'LMC'))
+    sources.append((13.1875,-72.8286,'SMC'))
+    sources.append((201.3667,-43.0192,'Cen A'))
+    sources.append((83.6333,20.0144,'Crab Pulsar'))
+    sources.append((128.8375,-45.1764,'Vela SNR'))
+    cat_path = '/lustre/aoc/projects/hera/dstorer/Setup/hera_notebook_templates/hera_notebook_templates/data/G4Jy_catalog.tsv'
+    cat_path = f'{DATA_PATH}/G4Jy_catalog.tsv'
+    cat = open(cat_path)
+    f = csv.reader(cat,delimiter='\n')
+    for row in f:
+        if len(row)>0 and row[0][0]=='J':
+            s = row[0].split(';')
+            tup = (float(s[1]),float(s[2]),'')
+            sources.append(tup)
+    return sources
 
 def clean_ds(HHfiles, difffiles, bls, area=1000., tol=1e-9, skip_wgts=0.2): 
     
