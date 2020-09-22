@@ -43,7 +43,6 @@ def read_template(pol='XX'):
     elif pol == 'YY':
         polstr = 'east'
     temp_path = f'{DATA_PATH}/templates/{polstr}_template.json'
-#     f'/lustre/aoc/projects/hera/dstorer/Setup/hera_notebook_templates/hera_notebook_templates/templates/{polstr}_template.json'
     with open(temp_path) as f:
         data = json.load(f)
     return data
@@ -1821,7 +1820,6 @@ def gather_source_list():
     sources.append((201.3667,-43.0192,'Cen A'))
     sources.append((83.6333,20.0144,'Crab Pulsar'))
     sources.append((128.8375,-45.1764,'Vela SNR'))
-    cat_path = '/lustre/aoc/projects/hera/dstorer/Setup/hera_notebook_templates/hera_notebook_templates/data/G4Jy_catalog.tsv'
     cat_path = f'{DATA_PATH}/G4Jy_catalog.tsv'
     cat = open(cat_path)
     f = csv.reader(cat,delimiter='\n')
