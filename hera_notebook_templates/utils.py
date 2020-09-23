@@ -250,7 +250,7 @@ def plot_sky_map(uvd,ra_pad=20,dec_pad=30,clip=True,fwhm=11,nx=300,ny=200,source
     hdulist.close()
 
 def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts=[],tempAnts=[],crossedAnts=[],use_ants='auto'):
-    status_use = ['RF_ok','digital_maintenance','digital_ok','calibration_maintenance','calibration_ok','calibration_triage']
+    status_use = ['RF_ok','digital_ok','calibration_maintenance','calibration_ok','calibration_triage']
     if use_ants == 'auto':
         use_ants = uvd1.get_ants()
     h = cm_active.ActiveData(at_date=jd)
