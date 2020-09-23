@@ -160,7 +160,7 @@ def load_data(data_path,JD):
    
     return HHfiles, difffiles, HHautos, diffautos, uvd_xx1, uvd_yy1
 
-def plot_sky_map(uvd,ra_pad=20,dec_pad=30,clip=True,fwhm=11,nx=600,ny=400,sources=[]):
+def plot_sky_map(uvd,ra_pad=20,dec_pad=30,clip=True,fwhm=11,nx=300,ny=200,sources=[]):
     map_path = f'{DATA_PATH}/haslam408_dsds_Remazeilles2014.fits'
     hdulist = fits.open(map_path)
 
@@ -218,7 +218,7 @@ def plot_sky_map(uvd,ra_pad=20,dec_pad=30,clip=True,fwhm=11,nx=600,ny=400,source
     alphas = np.flip(alphas,axis=1)
 
     # Make a plot of the interpolated temperatures
-    plt.figure(figsize=(15, 8))
+    plt.figure(figsize=(12, 7))
     im = plt.imshow(tmap, extent=[ra[-1], ra[0], dec[0], dec[-1]], 
                     cmap=plt.cm.viridis, aspect='auto', vmin=10,vmax=40,alpha=alphas,origin='lower')
     plt.xlabel('RA (ICRS)')
@@ -246,6 +246,8 @@ def plot_sky_map(uvd,ra_pad=20,dec_pad=30,clip=True,fwhm=11,nx=600,ny=400,source
                 if len(s[2]) > 0:
                     plt.annotate(s[2],xy=(s[0]+3,s[1]-4),xycoords='data',fontsize=6)
     plt.show()
+    plt.close()
+    hdulist.close()
 
 def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts=[],tempAnts=[],crossedAnts=[],use_ants='auto'):
     status_use = ['RF_ok','digital_maintenance','digital_ok','calibration_maintenance','calibration_ok','calibration_triage']
@@ -314,7 +316,7 @@ def auto_waterfall_lineplot(uv, ant, jd, pols=['xx','yy'], colorbar_min=1e6, col
     h.load_apriori()
     status = h.apriori[f'HH{ant}:A'].status
     freq = uv.freq_array[0]*1e-6
-    fig = plt.figure(figsize=(20,12))
+    fig = plt.figure(figsize=(12,8))
     gs = gridspec.GridSpec(3, 2, height_ratios=[2,0.7,1])
     it = 0
     pol_dirs = ['NN','EE']
@@ -486,7 +488,8 @@ def plot_autos(uvdx, uvdy):
         for k in range(j,maxants):
             axes[i,k].axis('off')
         axes[i,maxants-1].annotate(f'Node {n}', (1.1,.3),xycoords='axes fraction',rotation=270)
-    fig.show()
+    plt.show()
+    plt.close()
     
 def plot_wfs(uvd, pol):
     amps = np.abs(uvd.data_array[:, :, :, pol].reshape(uvd.Ntimes, uvd.Nants_data, uvd.Nfreqs, 1))
@@ -596,7 +599,8 @@ def plot_wfs(uvd, pol):
 #         cbarticks = [np.around(x,1) for x in np.linspace(vmin,vmax,7)[i] for i in cbar.get_ticks()]
 #         cbar.set_ticklabels(cbarticks)
 #         axes[i,maxants-1].annotate(f'Node {n}', (.97,pos.y0+.03),xycoords='figure fraction',rotation=270)
-    fig.show()
+    plt.show()
+    plt.close()
     
     
 def plot_mean_subtracted_wfs(uvd, use_ants, jd, pols=['xx','yy']):
@@ -632,7 +636,7 @@ def plot_mean_subtracted_wfs(uvd, use_ants, jd, pols=['xx','yy']):
     h = cm_active.ActiveData(at_date=jd)
     h.load_apriori()
     
-    fig, axes = plt.subplots(Nants, 2, figsize=(20,Nants*4))
+    fig, axes = plt.subplots(Nants, 2, figsize=(10,Nants*3))
     fig.suptitle('Mean Subtracted Waterfalls')
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.subplots_adjust(left=.1, bottom=.1, right=.85, top=.975, wspace=0.05, hspace=0.2)
@@ -670,6 +674,7 @@ def plot_mean_subtracted_wfs(uvd, use_ants, jd, pols=['xx','yy']):
             cbar_ax=fig.add_axes([0.88,pos.y0,0.02,pos.height])
             fig.colorbar(im, cax=cbar_ax)
     fig.show()
+#     plt.close()
 
 def plot_closure(uvd, triad_length, pol):
     """Plot closure phase for an example triad.
@@ -891,6 +896,7 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
         j += 1
     fig.suptitle('Visibility spectra (JD: %i)' % (JD))
     fig.subplots_adjust(top=.94,wspace=0.05)
+    plt.close()
     
 def plot_antenna_positions(uv, badAnts=[],flaggedAnts=[],use_ants='auto'):
     """
@@ -986,6 +992,7 @@ def plot_antenna_positions(uv, badAnts=[],flaggedAnts=[],use_ants='auto'):
     plt.legend(title='Node Number',bbox_to_anchor=(1.15,0.9),markerscale=0.5,labelspacing=1.5)
     plt.xlabel('East')
     plt.ylabel('North')
+    plt.close()
     
 def plot_lst_coverage(uvd):
     """
@@ -1027,6 +1034,7 @@ def plot_lst_coverage(uvd):
     ax2.set_xticklabels(np.around(lstlabels,2))
     ax2.set_label('LST (hours)')
     ax2.tick_params(labelsize=12)
+    plt.close()
     
 def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
     """Plot Even/Odd visibility ratio waterfall.
@@ -1075,6 +1083,7 @@ def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
     while i < len(freqs):
         ax.axvline(i,color='w')
         i += 192
+    plt.close()
     return rat
     
 def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.25, plotRatios=False):
@@ -1804,6 +1813,7 @@ def plot_crosses(uvd, ref_ant):
                 ax.set_xlabel('freq (MHz)', fontsize=10)
             k += 1
     fig.show()
+    plt.close()
     
 def gather_source_list():
     sources = []
