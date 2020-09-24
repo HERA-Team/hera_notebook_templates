@@ -896,6 +896,7 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
         j += 1
     fig.suptitle('Visibility spectra (JD: %i)' % (JD))
     fig.subplots_adjust(top=.94,wspace=0.05)
+    plt.show()
     plt.close()
     
 def plot_antenna_positions(uv, badAnts=[],flaggedAnts=[],use_ants='auto'):
@@ -992,6 +993,7 @@ def plot_antenna_positions(uv, badAnts=[],flaggedAnts=[],use_ants='auto'):
     plt.legend(title='Node Number',bbox_to_anchor=(1.15,0.9),markerscale=0.5,labelspacing=1.5)
     plt.xlabel('East')
     plt.ylabel('North')
+    plt.show()
     plt.close()
     
 def plot_lst_coverage(uvd):
@@ -1034,6 +1036,7 @@ def plot_lst_coverage(uvd):
     ax2.set_xticklabels(np.around(lstlabels,2))
     ax2.set_label('LST (hours)')
     ax2.tick_params(labelsize=12)
+    plt.show()
     plt.close()
     
 def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
@@ -1083,6 +1086,7 @@ def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
     while i < len(freqs):
         ax.axvline(i,color='w')
         i += 192
+    plt.show()
     plt.close()
     return rat
     
