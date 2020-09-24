@@ -446,7 +446,7 @@ def plot_autos(uvdx, uvdy):
 #         labels.append(s)
 
     xlim = (np.min(freqs), np.max(freqs))
-    ylim = (50, 90)
+    ylim = (55, 85)
 
     fig, axes = plt.subplots(Yside, Nside, figsize=(16,Yside*3))
 
