@@ -37,7 +37,7 @@ import healpy
 warnings.filterwarnings('ignore')
 
 
-def read_template(pol='XX'):
+def read_eva_template(pol='XX'):
     if pol == 'XX':
         polstr = 'north'
     elif pol == 'YY':
@@ -47,80 +47,152 @@ def read_template(pol='XX'):
         data = json.load(f)
     return data
 
-def flag_by_template(uvd,HHfiles,jd,use_ants='auto',pols=['XX','YY'],polDirs=['NN','EE'],temp_norm=True,plotMap=False):
-    use_files, use_lsts, use_file_inds = get_hourly_files(uvd,HHfiles,jd)
-    temp = {}
-    ant_dfs = {}
-    for pol in pols:
-        temp[pol] = read_template(pol)
-        ant_dfs[pol] = {}
-    if use_ants == 'auto':
-        use_ants = uvd.get_ants()
-    flaggedAnts = {polDirs[0]: [], polDirs[1]: []}
-    for i,lst in enumerate(use_lsts):
-#         print(lst)
-        hdat = UVData()
-        hdat.read(use_files[i],antenna_nums=use_ants)
-        for p,pol in enumerate(pols):
-            ant_dfs[pol][lst] = {}
-            ranges = np.asarray(temp[pol]['lst_ranges'][0])
-            if len(np.argwhere(ranges[:,0]<lst)) > 0:
-                ind = np.argwhere(ranges[:,0]<lst)[-1][0]
-            else:
-                if p == 0:
-                    print(f'No template for lst={lst} - skipping')
-                continue
-            dat = np.abs(temp[pol][str(ind)])
-            if temp_norm is True:
-                medpower = np.nanmedian(np.log10(np.abs(hdat.data_array)))
-                medtemp = np.nanmedian(dat)
-                norm = np.divide(medpower,medtemp)
-                dat = np.multiply(dat,norm)        
-            for ant in use_ants:
-                d = np.log10(np.abs(hdat.get_data((ant,ant,pol))))
-                d = np.average(d,axis=0)
-                df = np.abs(np.subtract(dat,d))
-                ant_dfs[pol][lst][ant] = np.nanmedian(df)
-            if plotMap is True:
-                fig = plt.figure(figsize=(18,10))
-                cmap = plt.get_cmap('inferno')
-                sm = plt.cm.ScalarMappable(cmap=cmap,norm=plt.Normalize(vmin=0,vmax=1))
-                sm._A = []
-            ampmin=100000000000000
-            ampmax=0
-            for ant in use_ants:
-                amp = ant_dfs[pol][lst][ant]
-                if amp > ampmax: ampmax=amp
-                elif amp < ampmin: ampmin=amp
-            rang = ampmax-ampmin
-            for ant in use_ants:
-                idx = np.argwhere(hdat.antenna_numbers == ant)[0][0]
-                antPos = hdat.antenna_positions[idx]
-                amp = ant_dfs[pol][lst][ant]
-                if math.isnan(amp):
-                    marker="v"
-                    color="r"
-                    markersize=30
+def read_dara_template():
+    import pickle
+    fpath = f'{DATA_PATH}/templates/template.pickle'
+    template = pickle.load(open(fpath,'rb'))
+#     template = pickle.load(f'{DATA_PATH}/templates/template.pickle')
+    return template
+
+def flag_by_template(uvd,template='auto',pols=['XX','YY']):
+    if template == 'auto':
+        template = read_dara_template()
+    ants = uvd.get_ants()
+#     fig, axes = plt.subplots(7,4,figsize=(15,20))
+    flaggedbypower = {} 
+    flaggedbyshape = {}
+    powers = {}
+    for ant in ants:
+        powers[ant]=[]
+    for i,ant in enumerate(ants):
+        df = []
+        shp = []
+        for pol in pols:
+            d = uvd.get_data((ant,ant,pol))
+            d = np.average(d,axis=0)[100:1400]
+            dat = template[pol][100:1400]
+            sub = np.abs(np.subtract(dat,d))
+            med = np.nanmedian(sub)/1e5
+#             if med > 65:
+#                 if ant in flaggedbypower.keys():
+#                     flaggedbypower[ant].append(pol)
+#                 else:
+#                     flaggedbypower[ant] = [pol]
+#                 fig = plt.figure()
+#                 plt.plot(dat,label='template')
+#                 plt.plot(d,label=pol)
+#                 plt.title(ant)
+#                 plt.legend()
+            df.append(np.around(med,1))
+            normd = np.multiply(d,np.nanmedian(dat)/np.nanmedian(d))
+            normsub = np.abs(np.subtract(dat,normd))
+            logsub = np.abs(np.subtract(np.log10(dat),np.log10(normd)))
+            normsubmed = np.nanmedian(normsub)/1e5
+#             axes[i//4,i%4].plot(logsub,label=pol)
+#             axes[i//4,i%4].set_title(ant)
+#             axes[i//4,i%4].set_ylim((0,0.2))
+            if normsubmed >= 6:
+                if ant in flaggedbyshape.keys():
+                    flaggedbyshape[ant].append(pol)
                 else:
-                    cind = float((amp-ampmin)/rang)
-                    if plotMap is True:
-                        coloramp = cmap(cind)
-                        color=coloramp
-                        marker="h"
-                        markersize=40
-                if cind > 0.15 and ant not in flaggedAnts[polDirs[p]]:
-                    flaggedAnts[polDirs[p]].append(ant)
-                if plotMap is True:
-                    plt.plot(antPos[1],antPos[2],marker=marker,markersize=markersize,color=color)
-                    if math.isnan(amp) or coloramp[0]>0.6:
-                        plt.text(antPos[1]-3,antPos[2],str(ant),color='black')
-                    else:
-                        plt.text(antPos[1]-3,antPos[2],str(ant),color='white')
-            if plotMap is True:
-                plt.title(f'{polDirs[p]} pol, {lst} hours')
-                cbar = fig.colorbar(sm)
-                cbar.set_ticks([])
-    return ant_dfs, flaggedAnts
+                    flaggedbyshape[ant] = [pol]
+            shp.append(np.around(normsubmed,0))
+#         print(f'{ant}: ({df[0]},{df[1]}), ({shp[0]},{shp[1]})')
+        xx = np.average(uvd.get_data((ant,ant,'XX')),axis=0)
+        yy = np.average(uvd.get_data((ant,ant,'YY')),axis=0)
+        if np.nanmedian(np.abs(np.subtract(xx,yy)))>=5e6:
+            if ant in flaggedbypower.keys() and len(flaggedbypower[ant])==2:
+                continue
+#             if ant in flaggedbyshape.keys():
+#                 continue
+            if np.nanmedian(xx) > np.nanmedian(yy):
+                flaggedbypower[ant] = pols[1]
+            else:
+                flaggedbypower[ant] = pols[0]
+#             fig = plt.figure()
+#             plt.plot(xx,label='xx')
+#             plt.plot(yy,label='yy')
+#             plt.title(ant)
+#             plt.ylim((0,4e7))
+#             plt.legend()
+#             print(f'Ant {ant} flagged by power level diff: {np.nanmedian(np.abs(np.subtract(xx,yy)))/1e6}')
+#     axes[0][0].legend()
+    return flaggedbypower,flaggedbyshape
+
+# def flag_by_template(uvd,HHfiles,jd,use_ants='auto',pols=['XX','YY'],polDirs=['NN','EE'],temp_norm=True,plotMap=False):
+#     use_files, use_lsts, use_file_inds = get_hourly_files(uvd,HHfiles,jd)
+#     temp = {}
+#     ant_dfs = {}
+#     for pol in pols:
+#         temp[pol] = read_template(pol)
+#         ant_dfs[pol] = {}
+#     if use_ants == 'auto':
+#         use_ants = uvd.get_ants()
+#     flaggedAnts = {polDirs[0]: [], polDirs[1]: []}
+#     for i,lst in enumerate(use_lsts):
+# #         print(lst)
+#         hdat = UVData()
+#         hdat.read(use_files[i],antenna_nums=use_ants)
+#         for p,pol in enumerate(pols):
+#             ant_dfs[pol][lst] = {}
+#             ranges = np.asarray(temp[pol]['lst_ranges'][0])
+#             if len(np.argwhere(ranges[:,0]<lst)) > 0:
+#                 ind = np.argwhere(ranges[:,0]<lst)[-1][0]
+#             else:
+#                 if p == 0:
+#                     print(f'No template for lst={lst} - skipping')
+#                 continue
+#             dat = np.abs(temp[pol][str(ind)])
+#             if temp_norm is True:
+#                 medpower = np.nanmedian(np.log10(np.abs(hdat.data_array)))
+#                 medtemp = np.nanmedian(dat)
+#                 norm = np.divide(medpower,medtemp)
+#                 dat = np.multiply(dat,norm)        
+#             for ant in use_ants:
+#                 d = np.log10(np.abs(hdat.get_data((ant,ant,pol))))
+#                 d = np.average(d,axis=0)
+#                 df = np.abs(np.subtract(dat,d))
+#                 ant_dfs[pol][lst][ant] = np.nanmedian(df)
+#             if plotMap is True:
+#                 fig = plt.figure(figsize=(18,10))
+#                 cmap = plt.get_cmap('inferno')
+#                 sm = plt.cm.ScalarMappable(cmap=cmap,norm=plt.Normalize(vmin=0,vmax=1))
+#                 sm._A = []
+#             ampmin=100000000000000
+#             ampmax=0
+#             for ant in use_ants:
+#                 amp = ant_dfs[pol][lst][ant]
+#                 if amp > ampmax: ampmax=amp
+#                 elif amp < ampmin: ampmin=amp
+#             rang = ampmax-ampmin
+#             for ant in use_ants:
+#                 idx = np.argwhere(hdat.antenna_numbers == ant)[0][0]
+#                 antPos = hdat.antenna_positions[idx]
+#                 amp = ant_dfs[pol][lst][ant]
+#                 if math.isnan(amp):
+#                     marker="v"
+#                     color="r"
+#                     markersize=30
+#                 else:
+#                     cind = float((amp-ampmin)/rang)
+#                     if plotMap is True:
+#                         coloramp = cmap(cind)
+#                         color=coloramp
+#                         marker="h"
+#                         markersize=40
+#                 if cind > 0.15 and ant not in flaggedAnts[polDirs[p]]:
+#                     flaggedAnts[polDirs[p]].append(ant)
+#                 if plotMap is True:
+#                     plt.plot(antPos[1],antPos[2],marker=marker,markersize=markersize,color=color)
+#                     if math.isnan(amp) or coloramp[0]>0.6:
+#                         plt.text(antPos[1]-3,antPos[2],str(ant),color='black')
+#                     else:
+#                         plt.text(antPos[1]-3,antPos[2],str(ant),color='white')
+#             if plotMap is True:
+#                 plt.title(f'{polDirs[p]} pol, {lst} hours')
+#                 cbar = fig.colorbar(sm)
+#                 cbar.set_ticks([])
+#     return ant_dfs, flaggedAnts
     
 
 def load_data(data_path,JD):
@@ -249,7 +321,8 @@ def plot_sky_map(uvd,ra_pad=20,dec_pad=30,clip=True,fwhm=11,nx=300,ny=200,source
     plt.close()
     hdulist.close()
 
-def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts=[],tempAnts=[],crossedAnts=[],use_ants='auto'):
+def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts=[],tempAnts={},crossedAnts=[],powerAnts={},
+                      shapeAnts={},use_ants='auto'):
     status_use = ['RF_ok','digital_ok','calibration_maintenance','calibration_ok','calibration_triage']
     if use_ants == 'auto':
         use_ants = uvd1.get_ants()
@@ -258,7 +331,7 @@ def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts=[],tempAnts=[],crossedAnts=
     inspectAnts = []
     for ant in use_ants:
         status = h.apriori[f'HH{ant}:A'].status
-        if ant in badAnts or ant in flaggedAnts.keys() or ant in crossedAnts:
+        if ant in badAnts or ant in flaggedAnts.keys() or ant in crossedAnts or ant in powerAnts.keys() or ant in shapeAnts.keys():
             if status in status_use:
                 inspectAnts.append(ant)
         for k in tempAnts.keys():
@@ -274,6 +347,13 @@ def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts=[],tempAnts=[],crossedAnts=
             inspectTitles[ant] = f'{inspectTitles[ant]} ant_metrics,'
         if ant in crossedAnts:
             inspectTitles[ant] = f'{inspectTitles[ant]} cross matrix,'
+        if ant in powerAnts.keys():
+            inspectTitles[ant] = f'{inspectTitles[ant]} pol power mismatch,'
+        if ant in shapeAnts.keys():
+            if 'XX' in shapeAnts[ant]:
+                inspectTitles[ant] = f'{inspectTitles[ant]} NN shape,'
+            if 'YY' in shapeAnts[ant]:
+                inspectTitles[ant] = f'{inspectTitles[ant]} EE shape,'        
         try:
             for k in tempAnts.keys():
 #                 print(tempAnts[k])
@@ -367,8 +447,8 @@ def auto_waterfall_lineplot(uv, ant, jd, pols=['xx','yy'], colorbar_min=1e6, col
 #         line.set_xlabel('Frequency (MHz)')
         if p == 0:
             line.set_ylabel('Night Average')
-        else:
-            line.set_yticks([])
+#         else:
+#             line.set_yticks([])
         line.set_xlim(freq[0],freq[-1])
         line.set_xticks([])
         
@@ -380,8 +460,8 @@ def auto_waterfall_lineplot(uv, ant, jd, pols=['xx','yy'], colorbar_min=1e6, col
         line2.set_xlabel('Frequency (MHz)')
         if p == 0:
             line2.set_ylabel('Single Slice')
-        else:
-            line2.set_yticks([])
+#         else:
+#             line2.set_yticks([])
         line2.set_xlim(freq[0],freq[-1])
         
         plt.setp(waterfall.get_xticklabels(), visible=False)
