@@ -636,7 +636,7 @@ def plot_mean_subtracted_wfs(uvd, use_ants, jd, pols=['xx','yy']):
     h = cm_active.ActiveData(at_date=jd)
     h.load_apriori()
     
-    fig, axes = plt.subplots(Nants, 2, figsize=(10,Nants*3))
+    fig, axes = plt.subplots(Nants, 2, figsize=(7,Nants*2.2))
     fig.suptitle('Mean Subtracted Waterfalls')
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.subplots_adjust(left=.1, bottom=.1, right=.85, top=.975, wspace=0.05, hspace=0.2)
