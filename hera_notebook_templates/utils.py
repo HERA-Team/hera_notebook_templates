@@ -1008,7 +1008,8 @@ def plot_lst_coverage(uvd):
     lsts = uvd.lst_array*3.819719
     jds = np.unique(uvd.time_array)
     alltimes = np.arange(np.floor(jds[0]),np.ceil(jds[0]),jds[2]-jds[1])
-    truetimes = [np.min(np.abs(jds-jd))<=0.003 for jd in alltimes]
+    df = jds[2]-jds[1]
+    truetimes = [np.min(np.abs(jds-jd))<=df*0.6 for jd in alltimes]
     usetimes = np.tile(np.asarray(truetimes),(20,1))
 
     fig = plt.figure(figsize=(20,2))
