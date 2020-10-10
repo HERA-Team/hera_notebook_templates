@@ -503,7 +503,7 @@ def plot_autos(uvdx, uvdy):
     plt.show()
     plt.close()
     
-def plot_wfs(uvd, pol, mean_sub=False):
+def plot_wfs(uvd, pol, mean_sub=False, save=False, jd=''):
     amps = np.abs(uvd.data_array[:, :, :, pol].reshape(uvd.Ntimes, uvd.Nants_data, uvd.Nfreqs, 1))
     nodes, antDict, inclNodes = generate_nodeDict(uvd)
     ants = uvd.get_ants()
@@ -605,6 +605,8 @@ def plot_wfs(uvd, pol, mean_sub=False):
         cbar_ax=fig.add_axes([0.91,pos.y0,0.01,pos.height])        
         cbar = fig.colorbar(im, cax=cbar_ax)
         cbar.set_label(f'Node {n}',rotation=270, labelpad=15)
+    if save is True:
+        plt.savefig(f'{jd}_mean_subtracted_per_node_{pol}.png',bbox_inches='tight',dpi=300)
     plt.show()
     plt.close()
     
