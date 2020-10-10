@@ -155,6 +155,19 @@ def load_data(data_path,JD):
     Nfiles = len(HHfiles)
     hhfile_bases = map(os.path.basename, HHfiles)
     hhdifffile_bases = map(os.path.basename, difffiles)
+    sep = '.'
+    x = sep.join(HHfiles[0].split('.')[-4:-2])
+    y = sep.join(HHfiles[-1].split('.')[-4:-2])
+    print(f'{len(HHfiles)} sum files found between JDs {x} and {y}')
+    x = sep.join(difffiles[0].split('.')[-4:-2])
+    y = sep.join(difffiles[-1].split('.')[-4:-2])
+    print(f'{len(difffiles)} diff files found between JDs {x} and {y}')
+    x = sep.join(HHautos[0].split('.')[-5:-3])
+    y = sep.join(HHautos[-1].split('.')[-5:-3])
+    print(f'{len(HHautos)} sum auto files found between JDs {x} and {y}')
+    x = sep.join(diffautos[0].split('.')[-5:-3])
+    y = sep.join(diffautos[-1].split('.')[-5:-3])
+    print(f'{len(diffautos)} diff auto files found between JDs {x} and {y}')
 
     # choose one for single-file plots
     hhfile1 = HHfiles[len(HHfiles)//2]
@@ -503,7 +516,7 @@ def plot_autos(uvdx, uvdy):
     plt.show()
     plt.close()
     
-def plot_wfs(uvd, pol, mean_sub=False):
+def plot_wfs(uvd, pol, mean_sub=False, save=False, jd=''):
     amps = np.abs(uvd.data_array[:, :, :, pol].reshape(uvd.Ntimes, uvd.Nants_data, uvd.Nfreqs, 1))
     nodes, antDict, inclNodes = generate_nodeDict(uvd)
     ants = uvd.get_ants()
@@ -605,6 +618,8 @@ def plot_wfs(uvd, pol, mean_sub=False):
         cbar_ax=fig.add_axes([0.91,pos.y0,0.01,pos.height])        
         cbar = fig.colorbar(im, cax=cbar_ax)
         cbar.set_label(f'Node {n}',rotation=270, labelpad=15)
+    if save is True:
+        plt.savefig(f'{jd}_mean_subtracted_per_node_{pol}.png',bbox_inches='tight',dpi=300)
     plt.show()
     plt.close()
     
