@@ -1031,8 +1031,6 @@ def plot_lst_coverage(uvd):
     df = jds[2]-jds[1]
     truetimes = [np.min(np.abs(jds-jd))<=df*0.6 for jd in alltimes]
     usetimes = np.tile(np.asarray(truetimes),(20,1))
-    print(len(alltimes))
-    print(len(truetimes))
 
     fig = plt.figure(figsize=(20,2))
     ax = fig.add_subplot()
@@ -1043,9 +1041,7 @@ def plot_lst_coverage(uvd):
     if len(alltimes) <= 15:
         xticks = [int(i) for i in np.linspace(0,len(alltimes)-1,len(alltimes))]
     else:
-        print('else')
         xticks = [int(i) for i in np.linspace(0,len(alltimes)-1,14)]
-    print(len(xticks))
     ax.set_xticks(xticks)
     ax.set_xticklabels(np.around(alltimes[xticks],2))
     ax.set_xlabel('JD')
