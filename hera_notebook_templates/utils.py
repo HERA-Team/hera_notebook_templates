@@ -37,6 +37,30 @@ import healpy
 warnings.filterwarnings('ignore')
 
 
+def get_use_ants(uvd,statuses,jd):
+    status_abbreviations = {
+        'dish_maintenance' : 'dish-M',
+        'dish_ok' : 'dish-OK',
+        'RF_maintenance' : 'RF-M',
+        'RF_ok' : 'RF-OK',
+        'digital_maintenance' : 'dig-M',
+        'digital_ok' : 'dig-OK',
+        'calibration_maintenance' : 'cal-M',
+        'calibration_ok' : 'cal-OK',
+        'calibration_triage' : 'cal-Tri'}
+    statuses = statuses.split(',')
+#     known_good = ["digital_ok","calibration_maintenance","calibration_ok","calibration_triage"]
+#     maybe_good = ["RF_ok","digital_maintenance","digital_ok","calibration_maintenance","calibration_ok","calibration_triage"]
+    ants = uvd.antenna_numbers
+    use_ants = []
+    h = cm_active.ActiveData(at_date=jd)
+    h.load_apriori()
+    for ant in ants:
+        status = h.apriori[f'HH{ant}:A'].status
+        if status in statuses:
+            use_ants.append(ant)
+    return use_ants
+
 def read_template(pol='XX'):
     if pol == 'XX':
         polstr = 'north'
@@ -131,6 +155,19 @@ def load_data(data_path,JD):
     Nfiles = len(HHfiles)
     hhfile_bases = map(os.path.basename, HHfiles)
     hhdifffile_bases = map(os.path.basename, difffiles)
+    sep = '.'
+    x = sep.join(HHfiles[0].split('.')[-4:-2])
+    y = sep.join(HHfiles[-1].split('.')[-4:-2])
+    print(f'{len(HHfiles)} sum files found between JDs {x} and {y}')
+    x = sep.join(difffiles[0].split('.')[-4:-2])
+    y = sep.join(difffiles[-1].split('.')[-4:-2])
+    print(f'{len(difffiles)} diff files found between JDs {x} and {y}')
+    x = sep.join(HHautos[0].split('.')[-5:-3])
+    y = sep.join(HHautos[-1].split('.')[-5:-3])
+    print(f'{len(HHautos)} sum auto files found between JDs {x} and {y}')
+    x = sep.join(diffautos[0].split('.')[-5:-3])
+    y = sep.join(diffautos[-1].split('.')[-5:-3])
+    print(f'{len(diffautos)} diff auto files found between JDs {x} and {y}')
 
     # choose one for single-file plots
     hhfile1 = HHfiles[len(HHfiles)//2]
@@ -249,8 +286,8 @@ def plot_sky_map(uvd,ra_pad=20,dec_pad=30,clip=True,fwhm=11,nx=300,ny=200,source
     plt.close()
     hdulist.close()
 
-def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts=[],tempAnts=[],crossedAnts=[],use_ants='auto'):
-    status_use = ['RF_ok','digital_maintenance','digital_ok','calibration_maintenance','calibration_ok','calibration_triage']
+def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts={},tempAnts={},crossedAnts=[],use_ants='auto'):
+    status_use = ['RF_ok','digital_ok','calibration_maintenance','calibration_ok','calibration_triage']
     if use_ants == 'auto':
         use_ants = uvd1.get_ants()
     h = cm_active.ActiveData(at_date=jd)
@@ -276,7 +313,6 @@ def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts=[],tempAnts=[],crossedAnts=
             inspectTitles[ant] = f'{inspectTitles[ant]} cross matrix,'
         try:
             for k in tempAnts.keys():
-#                 print(tempAnts[k])
                 if ant in tempAnts[k]:
                     inspectTitles[ant] = f'{inspectTitles[ant]} template - {k},'
         except:
@@ -325,8 +361,6 @@ def auto_waterfall_lineplot(uv, ant, jd, pols=['xx','yy'], colorbar_min=1e6, col
         jd_ax=plt.gca()
         times= np.unique(uv.time_array)
         d = np.abs(uv.get_data((ant,ant, pol)))
-#         print(np.nonzero(d))
-#         print(np.shape(np.nonzero(d)))
         if len(np.nonzero(d)[0])==0:
             print('#########################################')
             print(f'Data for antenna {ant} is entirely zeros')
@@ -364,7 +398,6 @@ def auto_waterfall_lineplot(uv, ant, jd, pols=['xx','yy'], colorbar_min=1e6, col
         averaged_data= np.abs(np.average(uv.get_data((ant,ant,pol)),0))
         plt.plot(freq,averaged_data)
         line.set_yscale('log')
-#         line.set_xlabel('Frequency (MHz)')
         if p == 0:
             line.set_ylabel('Night Average')
         else:
@@ -437,16 +470,9 @@ def plot_autos(uvdx, uvdy):
         'calibration_triage' : 'cal-Tri'}
     h = cm_active.ActiveData(at_date=jd)
     h.load_apriori()
-    
-#     custom_lines = []
-#     labels = []
-#     for s in status_colors.keys():
-#         c = status_colors[s]
-#         custom_lines.append(Line2D([0],[0],color=c,lw=2))
-#         labels.append(s)
 
     xlim = (np.min(freqs), np.max(freqs))
-    ylim = (50, 90)
+    ylim = (55, 85)
 
     fig, axes = plt.subplots(Yside, Nside, figsize=(16,Yside*3))
 
@@ -454,7 +480,6 @@ def plot_autos(uvdx, uvdy):
     fig.suptitle("JD = {0}, time = {1} UTC".format(jd, utc), fontsize=10,y=1+ptitle)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.subplots_adjust(left=.1, bottom=.1, right=.9, top=1, wspace=0.05, hspace=0.3)
-#     fig.legend(custom_lines,labels,bbox_to_anchor=(0.6,.98),ncol=3)
     k = 0
     for i,n in enumerate(inclNodes):
         ants = nodes[n]['ants']
@@ -491,7 +516,7 @@ def plot_autos(uvdx, uvdy):
     plt.show()
     plt.close()
     
-def plot_wfs(uvd, pol):
+def plot_wfs(uvd, pol, mean_sub=False, save=False, jd=''):
     amps = np.abs(uvd.data_array[:, :, :, pol].reshape(uvd.Ntimes, uvd.Nants_data, uvd.Nfreqs, 1))
     nodes, antDict, inclNodes = generate_nodeDict(uvd)
     ants = uvd.get_ants()
@@ -538,20 +563,12 @@ def plot_wfs(uvd, pol):
         'calibration_triage' : 'cal-Tri'}
     h = cm_active.ActiveData(at_date=jd)
     h.load_apriori()
-    
-#     custom_lines = []
-#     labels = []
-#     for s in status_colors.keys():
-#         c = status_colors[s]
-#         custom_lines.append(Line2D([0],[0],color=c,lw=2))
-#         labels.append(s)
     ptitle = 1.92/(Yside*3)
     fig, axes = plt.subplots(Yside, Nside, figsize=(16,Yside*3))
     if pol == 0:
         fig.suptitle("North Polarization", fontsize=14, y=1+ptitle)
     else:
         fig.suptitle("East Polarization", fontsize=14, y=1+ptitle)
-#     fig.legend(custom_lines,labels,bbox_to_anchor=(0.7,1),ncol=3)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.subplots_adjust(left=0, bottom=.1, right=.9, top=1, wspace=0.1, hspace=0.3)
     vmin = 6.5
@@ -566,9 +583,14 @@ def plot_wfs(uvd, pol):
             status = h.apriori[f'HH{a}:A'].status
             abb = status_abbreviations[status]
             ax = axes[i,j]
-            dat = uvd.get_data(a,a,polnames[pol])
-            im = ax.imshow(np.log10(np.abs(dat)), 
-                           vmin = vmin, vmax = vmax, aspect='auto',interpolation='nearest')
+            dat = np.log10(np.abs(uvd.get_data(a,a,polnames[pol])))
+            if mean_sub == True:
+                ms = np.subtract(dat, np.nanmean(dat,axis=0))
+                im = ax.imshow(ms, 
+                           vmin = -0.07, vmax = 0.07, aspect='auto',interpolation='nearest')
+            else:
+                im = ax.imshow(dat, 
+                               vmin = vmin, vmax = vmax, aspect='auto',interpolation='nearest')
             ax.set_title(f'{a} ({abb})', fontsize=10,backgroundcolor=status_colors[status])
             if i == len(inclNodes)-1:
                 xticks = [int(i) for i in np.linspace(0,len(freqs)-1,3)]
@@ -596,9 +618,8 @@ def plot_wfs(uvd, pol):
         cbar_ax=fig.add_axes([0.91,pos.y0,0.01,pos.height])        
         cbar = fig.colorbar(im, cax=cbar_ax)
         cbar.set_label(f'Node {n}',rotation=270, labelpad=15)
-#         cbarticks = [np.around(x,1) for x in np.linspace(vmin,vmax,7)[i] for i in cbar.get_ticks()]
-#         cbar.set_ticklabels(cbarticks)
-#         axes[i,maxants-1].annotate(f'Node {n}', (.97,pos.y0+.03),xycoords='figure fraction',rotation=270)
+    if save is True:
+        plt.savefig(f'{jd}_mean_subtracted_per_node_{pol}.png',bbox_inches='tight',dpi=300)
     plt.show()
     plt.close()
     
@@ -636,7 +657,7 @@ def plot_mean_subtracted_wfs(uvd, use_ants, jd, pols=['xx','yy']):
     h = cm_active.ActiveData(at_date=jd)
     h.load_apriori()
     
-    fig, axes = plt.subplots(Nants, 2, figsize=(10,Nants*3))
+    fig, axes = plt.subplots(Nants, 2, figsize=(7,Nants*2.2))
     fig.suptitle('Mean Subtracted Waterfalls')
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.subplots_adjust(left=.1, bottom=.1, right=.85, top=.975, wspace=0.05, hspace=0.2)
@@ -674,7 +695,6 @@ def plot_mean_subtracted_wfs(uvd, use_ants, jd, pols=['xx','yy']):
             cbar_ax=fig.add_axes([0.88,pos.y0,0.02,pos.height])
             fig.colorbar(im, cax=cbar_ax)
     fig.show()
-#     plt.close()
 
 def plot_closure(uvd, triad_length, pol):
     """Plot closure phase for an example triad.
@@ -896,9 +916,10 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
         j += 1
     fig.suptitle('Visibility spectra (JD: %i)' % (JD))
     fig.subplots_adjust(top=.94,wspace=0.05)
+    plt.show()
     plt.close()
     
-def plot_antenna_positions(uv, badAnts=[],flaggedAnts=[],use_ants='auto'):
+def plot_antenna_positions(uv, badAnts={},flaggedAnts={},use_ants='auto'):
     """
     Plots the positions of all antennas that have data, colored by node.
     
@@ -992,6 +1013,7 @@ def plot_antenna_positions(uv, badAnts=[],flaggedAnts=[],use_ants='auto'):
     plt.legend(title='Node Number',bbox_to_anchor=(1.15,0.9),markerscale=0.5,labelspacing=1.5)
     plt.xlabel('East')
     plt.ylabel('North')
+    plt.show()
     plt.close()
     
 def plot_lst_coverage(uvd):
@@ -1006,7 +1028,8 @@ def plot_lst_coverage(uvd):
     lsts = uvd.lst_array*3.819719
     jds = np.unique(uvd.time_array)
     alltimes = np.arange(np.floor(jds[0]),np.ceil(jds[0]),jds[2]-jds[1])
-    truetimes = [np.min(np.abs(jds-jd))<=0.003 for jd in alltimes]
+    df = jds[2]-jds[1]
+    truetimes = [np.min(np.abs(jds-jd))<=df*0.6 for jd in alltimes]
     usetimes = np.tile(np.asarray(truetimes),(20,1))
 
     fig = plt.figure(figsize=(20,2))
@@ -1034,6 +1057,7 @@ def plot_lst_coverage(uvd):
     ax2.set_xticklabels(np.around(lstlabels,2))
     ax2.set_label('LST (hours)')
     ax2.tick_params(labelsize=12)
+    plt.show()
     plt.close()
     
 def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
@@ -1083,6 +1107,7 @@ def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
     while i < len(freqs):
         ax.axvline(i,color='w')
         i += 192
+    plt.show()
     plt.close()
     return rat
     
