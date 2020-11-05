@@ -1946,7 +1946,7 @@ def clean_ds(HHfiles, uvd_data_ds, uvd_diff_ds, area=500., tol=1e-7, skip_wgts=0
     Nants = len(uvd_data_ds.get_ants())
     
     flag_folders = [HHfile.split('.sum')[0]+'.stage_1_xrfi' for HHfile in HHfiles]
-    flag_file = [sorted(glob.glob(os.path.join(flag_folder,'*sum.combined_flags1.h5')))[0] for flag_folder in flag_folders]
+    flag_file = [sorted(glob.glob(os.path.join(flag_folder,'*sum.flags2.h5')))[0] for flag_folder in flag_folders]
     uvf = UVFlag()
     uvf.read(flag_file)
     if(autos == True):
