@@ -1941,52 +1941,13 @@ def _clean_ds_per_bl_pol(bl, pol, uvd, uvd_diff, area, tol, skip_wgts, freq_rang
 
     return _data_cleaned_sq, data_rs_sq
 
-def clean_ds(HHfiles, uvd_data_ds, uvd_diff_ds, area=500., tol=1e-7, skip_wgts=0.2, N_threads=4, freq_range=[45,240], pols=['nn', 'ee', 'ne', 'en'], autos=True):
+def clean_ds(HHfiles, bls, uvd_ds, uvd_diff, area=500., tol=1e-7, skip_wgts=0.2, N_threads=4, freq_range=[45,240], pols=['nn', 'ee', 'ne', 'en']):
+    _data_cleaned_sq, data_rs_sq = {}, {}
     
-    Nants = len(uvd_data_ds.get_ants())
-    
-    flag_folders = [HHfile.split('.sum')[0]+'.stage_1_xrfi' for HHfile in HHfiles]
-    flag_file = [sorted(glob.glob(os.path.join(flag_folder,'*sum.flags2.h5')))[0] for flag_folder in flag_folders]
-    uvf = UVFlag()
-    uvf.read(flag_file)
-    if(autos == True):
-        bls = [(ant, ant) for ant in uvd_data_ds.get_ants()]
-    else:
-        bls = uvd_data_ds.get_antpairs()        
-    uvd_data_ds.flag_array[:,0,:,:] = np.repeat(uvf.flag_array, len(bls), axis=0)
-
-    def func_ds_clean_mpi(rank, queue, N_threads, uvd_ds, uvd_diff, freq_range):
-        _data_cleaned_sq, data_rs_sq = {}, {}
-            
-        N_jobs_each_thread = len(bls)*len(pols)/N_threads
-        k = 0
-        for i, bl in enumerate(bls):
-            for j, pol in enumerate(pols):
-                which_rank = int(k/N_jobs_each_thread)
-                if(rank == which_rank):
-                    key = (bl[0], bl[1], pol)
-                    _data_cleaned_sq[key], data_rs_sq[key] = _clean_ds_per_bl_pol(bl, pol, uvd_ds, uvd_diff, area, tol, skip_wgts, freq_range)
-                k += 1
-        queue.put([_data_cleaned_sq, data_rs_sq])
-
-    def run_clean_ds_mpi(uvd_ds, uvd_diff, N_threads, freq_range):
-        _data_cleaned_sq, data_rs_sq = {}, {}
-
-        queue = Queue()
-        for rank in range(N_threads):
-            p = Process(target=func_ds_clean_mpi, args=(rank, queue, N_threads, uvd_ds, uvd_diff, freq_range))
-            p.start()
-
-        for rank in range(N_threads):
-            data = queue.get()
-            _d_cleaned_sq = data[0]
-            d_rs_sq = data[1]
-            _data_cleaned_sq = {**_data_cleaned_sq, **_d_cleaned_sq}
-            data_rs_sq = {**data_rs_sq, **d_rs_sq}
-
-        return _data_cleaned_sq, data_rs_sq
-    
-    _data_cleaned_sq, data_rs_sq = run_clean_ds_mpi(uvd_data_ds, uvd_diff_ds, N_threads, freq_range)
+    for i, bl in enumerate(bls):
+        for j, pol in enumerate(pols):
+            key = (bl[0], bl[1], pol)
+            _data_cleaned_sq[key], data_rs_sq[key] = _clean_ds_per_bl_pol(bl, pol, uvd_ds, uvd_diff, area, tol, skip_wgts, freq_range)
     
     return _data_cleaned_sq, data_rs_sq
 
@@ -2256,7 +2217,7 @@ def plot_antFeatureMap(uvd, _data_sq, JD, pol='ee'):
     cbar = fig.colorbar(sm)
     cbar.set_label('2700ns Feature Amplitude (dB)')
 
-def make_html_dspec(HHfiles, uvd, uvd_diff, _data_cleaned_sq, data_rs_sq, JD):
+def make_html_dspec(HHfiles, html_filename, bls, uvd, uvd_diff, _data_cleaned_sq, data_rs_sq, JD):
 
     freqs = uvd.freq_array[0]
 
@@ -2276,7 +2237,7 @@ def make_html_dspec(HHfiles, uvd, uvd_diff, _data_cleaned_sq, data_rs_sq, JD):
             _data_sq_sub[(freq1, freq2)] = _data_cleaned_sq
             data_rs_sq_sub[(freq1, freq2)] = data_rs_sq
         else:
-            _d_sq_sub, d_rs_sq_sub = clean_ds(HHfiles, uvd, uvd_diff, freq_range=[freq1, freq2], pols=['nn','ee'], autos=True)
+            _d_sq_sub, d_rs_sq_sub = clean_ds(HHfiles, bls, uvd, uvd_diff, freq_range=[freq1, freq2], pols=['nn','ee'])
             _data_sq_sub[(freq1, freq2)] = _d_sq_sub
             data_rs_sq_sub[(freq1, freq2)] = d_rs_sq_sub
 
@@ -2428,11 +2389,11 @@ def make_html_dspec(HHfiles, uvd, uvd_diff, _data_cleaned_sq, data_rs_sq, JD):
         column(radio_button)
     )
 
-    output_file("delay_spectrum_JD{}.html".format(JD), title="delay_spectrum_JD{}".format(JD))
+    output_file(html_filename, title="delay_spectrum_JD{}".format(JD))
 
     show(layout)
     
-def CorrMatrix_2700ns(uvd, HHfiles, difffiles, JD):
+def CorrMatrix_2700ns(uvd, HHfiles, difffiles, flagfile, JD):
     """
     Plots a matrix representing the 2700ns feature correlation of each baseline.
     
@@ -2442,8 +2403,10 @@ def CorrMatrix_2700ns(uvd, HHfiles, difffiles, JD):
         Sample observation from the desired night, used for getting antenna information.
     HHfiles: List
         List of all files for a night of observation
-    HHfiles: List
+    difffiles: List
         List of diff files for a night of observation
+    flagfile: String
+        Sting of flag file
     JD: String
         JD of the given night of observation
     """
@@ -2475,8 +2438,15 @@ def CorrMatrix_2700ns(uvd, HHfiles, difffiles, JD):
         uvd_data_ds.read(HHfile)
         uvd_diff_ds = UVData()
         uvd_diff_ds.read(difffile)
+        uvf = UVFlag()
+        uvf.read(flagfile)
+        bls = uvd_data_ds.get_antpairs()
+        times_uvf = np.unique(uvf.time_array)
+        times_uvd = np.unique(uvd_data_ds.time_array)
+        idx_times = [np.where(time_uvd == times_uvf)[0][0] for time_uvd in times_uvd]
+        uvd_data_ds.flag_array[:,0,:,:] = np.repeat(uvf.flag_array[idx_times], len(bls), axis=0)
 
-        _d_cleaned_sq, _ = clean_ds([HHfile], uvd_data_ds, uvd_diff_ds, pols=pols, autos=False, area=area)
+        _d_cleaned_sq, _ = clean_ds([HHfile], bls, uvd_data_ds, uvd_diff_ds, pols=pols, area=area)
 
         freqs = uvd_data_ds.freq_array[0]
         taus = np.fft.fftshift(np.fft.fftfreq(freqs.size, np.diff(freqs)[0]))*1e9
