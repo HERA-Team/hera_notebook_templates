@@ -8,7 +8,7 @@ from matplotlib.ticker import FormatStrFormatter
 import matplotlib.patches as mpatches
 import matplotlib.gridspec as gridspec
 import numpy as np
-from pyuvdata import UVCal, UVData, utils
+from pyuvdata import UVCal, UVData, UVFlag, utils
 import os
 import sys
 import glob
@@ -34,6 +34,11 @@ from astropy import units as u
 from astropy_healpix import HEALPix
 from astropy.coordinates import Galactic
 import healpy
+from multiprocessing import Process, Queue
+from bokeh.layouts import row, column
+from bokeh.models import CustomJS, Select, RadioButtonGroup, Range1d
+from bokeh.plotting import figure, output_file, show, ColumnDataSource
+import scipy
 warnings.filterwarnings('ignore')
 
 
@@ -155,6 +160,19 @@ def load_data(data_path,JD):
     Nfiles = len(HHfiles)
     hhfile_bases = map(os.path.basename, HHfiles)
     hhdifffile_bases = map(os.path.basename, difffiles)
+    sep = '.'
+    x = sep.join(HHfiles[0].split('.')[-4:-2])
+    y = sep.join(HHfiles[-1].split('.')[-4:-2])
+    print(f'{len(HHfiles)} sum files found between JDs {x} and {y}')
+    x = sep.join(difffiles[0].split('.')[-4:-2])
+    y = sep.join(difffiles[-1].split('.')[-4:-2])
+    print(f'{len(difffiles)} diff files found between JDs {x} and {y}')
+    x = sep.join(HHautos[0].split('.')[-5:-3])
+    y = sep.join(HHautos[-1].split('.')[-5:-3])
+    print(f'{len(HHautos)} sum auto files found between JDs {x} and {y}')
+    x = sep.join(diffautos[0].split('.')[-5:-3])
+    y = sep.join(diffautos[-1].split('.')[-5:-3])
+    print(f'{len(diffautos)} diff auto files found between JDs {x} and {y}')
 
     # choose one for single-file plots
     hhfile1 = HHfiles[len(HHfiles)//2]
@@ -1851,392 +1869,606 @@ def gather_source_list():
             tup = (float(s[1]),float(s[2]),'')
             sources.append(tup)
     return sources
-
-def clean_ds(HHfiles, difffiles, bls, area=1000., tol=1e-9, skip_wgts=0.2): 
     
-    uvd_ds = UVData()
-    uvd_ds.read(HHfiles[0], bls=bls[0], polarizations=-5, keep_all_metadata=False)
-    times = np.unique(uvd_ds.time_array)
-    Nfiles = int(1./((times[-1]-times[0])*24.))
-    try:
-        uvd_ds.read(HHfiles[:Nfiles], bls=bls, polarizations=[-5,-6], keep_all_metadata=False)
-        uvd_ds.flag_array = np.zeros_like(uvd_ds.flag_array)
-        uvd_diff = UVData()
-        uvd_diff.read(difffiles[:Nfiles], bls=bls, polarizations=[-5,-6], keep_all_metadata=False)
-    except:
-        uvd_ds.read(HHfiles[len(HHfiles)//2:len(HHfiles)//2+Nfiles], bls=bls, polarizations=[-5,-6], keep_all_metadata=False)
-        uvd_ds.flag_array = np.zeros_like(uvd_ds.flag_array)
-        uvd_diff = UVData()
-        uvd_diff.read(difffiles[len(HHfiles)//2:len(HHfiles)//2+Nfiles], bls=bls, polarizations=[-5,-6], keep_all_metadata=False)
+def _clean_ds_per_bl_pol(bl, pol, uvd, uvd_diff, area, tol, skip_wgts, freq_range):
+    """
+    CLEAN function of delay spectra at given baseline and polarization.
     
-    uvf_m, uvf_fws = hera_qm.xrfi.xrfi_h1c_pipe(uvd_ds, sig_adj=1, sig_init=3)
-    hera_qm.xrfi.flag_apply(uvf_m, uvd_ds)
-    
-    freqs = uvd_ds.freq_array[0]
+    Parameters:
+    ----------
+    bl: Tuple
+        Tuple of baseline (ant1, ant2)
+    pol: String
+        String of polarization
+    uvd: UVData Object
+        Sample observation from the desired night to compute delay spectra
+    uvd_diff: UVData Object
+        Diff of observation from the desired night to calculate even/odd visibilities and delay spectra
+    area: Float
+        The half-width (i.e. the width of the positive part) of the region in fourier space, symmetric about 0, that is filtered out in ns.
+    tol: Float
+        CLEAN algorithm convergence tolerance (see aipy.deconv.clean)
+    skip_wgts: Float
+        Skips filtering rows with very low total weight (unflagged fraction ~< skip_wgt). See uvtools.dspec.high_pass_fourier_filter for more details
+    freq_range: Float
+        Frequecy range for making delay spectra in MHz
+        
+    Returns:
+    -------
+    _data_cleaned_sq: Dict
+        Square of CLEANed delay spectra, formatted as _data_cleaned_sq[(ant1, ant2, pol)]
+    data_rs_sq: Dict
+        Square of residual from CLEAN in frequency domain, formatted as data_rs_sq[(ant1, ant2, pol)]
+    """
+    key = (bl[0], bl[1], pol)
+    freqs = uvd.freq_array[0]
     FM_idx = np.searchsorted(freqs*1e-6, [85,110])
     flag_FM = np.zeros(freqs.size, dtype=bool)
     flag_FM[FM_idx[0]:FM_idx[1]] = True
+
+    freq_low, freq_high = np.sort(freq_range)
+    idx_freqs = np.where(np.logical_and(freqs*1e-6 > freq_low, freqs*1e-6 < freq_high))[0]
+    freqs = freqs[idx_freqs]
     win = dspec.gen_window('bh7', freqs.size)
+
+    data = uvd.get_data(key)[:, idx_freqs]
+    diff = uvd_diff.get_data(key)[:, idx_freqs]
+    wgts = (~uvd.get_flags(key)*~flag_FM[np.newaxis,:])[:, idx_freqs].astype(float)
+
+    idx_zero = np.where(np.abs(data) == 0)[0]
+    if(len(idx_zero)/len(data) < 0.5):
+        d_even = (data+diff)*0.5
+        d_odd = (data-diff)*0.5
+        d_even_cl, d_even_rs, _ = dspec.high_pass_fourier_filter(d_even, wgts, area*1e-9, freqs[1]-freqs[0], 
+                                                                 tol=tol, skip_wgt=skip_wgts, window='bh7')
+        d_odd_cl, d_odd_rs, _ = dspec.high_pass_fourier_filter(d_odd, wgts, area*1e-9, freqs[1]-freqs[0],
+                                                               tol=tol, skip_wgt=skip_wgts, window='bh7')
+
+        idx = np.where(np.mean(np.abs(d_even_cl), axis=1) == 0)[0]
+        d_even_cl[idx] = np.nan
+        d_even_rs[idx] = np.nan        
+        idx = np.where(np.mean(np.abs(d_odd_cl), axis=1) == 0)[0]
+        d_odd_cl[idx] = np.nan
+        d_odd_rs[idx] = np.nan
+
+        _d_even = np.fft.fftshift(np.fft.ifft((d_even_cl+d_even_rs)*win), axes=1)
+        _d_odd = np.fft.fftshift(np.fft.ifft((d_odd_cl+d_odd_rs)*win), axes=1)
+        _data_cleaned_sq = _d_odd.conj()*_d_even
+        data_rs_sq = d_odd_rs.conj()*d_even_rs
+    else:
+        _data_cleaned_sq = np.zeros_like(data)
+        data_rs_sq = np.zeros_like(data)
+
+    return _data_cleaned_sq, data_rs_sq
+
+def clean_ds(HHfiles, bls, uvd_ds, uvd_diff, area=500., tol=1e-7, skip_wgts=0.2, N_threads=4, freq_range=[45,240], pols=['nn', 'ee', 'ne', 'en']):
+    _data_cleaned_sq, data_rs_sq = {}, {}
     
-    pols = ['nn','ee']
+    for i, bl in enumerate(bls):
+        for j, pol in enumerate(pols):
+            key = (bl[0], bl[1], pol)
+            _data_cleaned_sq[key], data_rs_sq[key] = _clean_ds_per_bl_pol(bl, pol, uvd_ds, uvd_diff, area, tol, skip_wgts, freq_range)
     
-    _data_sq_cleaned, data_rs = {}, {}
-    for bl in bls:
-        for i, pol in enumerate(pols):
-            key = (bl[0],bl[1],pol)
-            data = uvd_ds.get_data(key)
-            diff = uvd_diff.get_data(key)
-            wgts = (~uvd_ds.get_flags(key)*~flag_FM[np.newaxis,:]).astype(float)
+    return _data_cleaned_sq, data_rs_sq
 
-            d_even = (data+diff)*0.5
-            d_odd = (data-diff)*0.5
-            d_even_cl, d_even_rs, _ = dspec.high_pass_fourier_filter(d_even, wgts, area*1e-9, freqs[1]-freqs[0], 
-                                                                     tol=tol, skip_wgt=skip_wgts, window='bh7')
-            d_odd_cl, d_odd_rs, _ = dspec.high_pass_fourier_filter(d_odd, wgts, area*1e-9, freqs[1]-freqs[0],
-                                                                   tol=tol, skip_wgt=skip_wgts, window='bh7')
-
-            idx = np.where(np.mean(np.abs(d_even_cl), axis=1) == 0)[0]
-            d_even_cl[idx] = np.nan
-            d_even_rs[idx] = np.nan        
-            idx = np.where(np.mean(np.abs(d_odd_cl), axis=1) == 0)[0]
-            d_odd_cl[idx] = np.nan
-            d_odd_rs[idx] = np.nan
-
-            _d_even = np.fft.fftshift(np.fft.ifft((d_even_cl+d_even_rs)*win), axes=1)
-            _d_odd = np.fft.fftshift(np.fft.ifft((d_odd_cl+d_odd_rs)*win), axes=1)
-
-            _data_sq_cleaned[key] = _d_odd.conj()*_d_even
-            data_rs[key] = d_even_rs
-        
-    return _data_sq_cleaned, data_rs, uvd_ds, uvd_diff
-
-def plot_wfds(uvd, _data_sq, pol):    
+def plot_wfds(uvd, _data_sq, pol):
+    """
+    Waterfall diagram for autocorrelation delay spectrum
+    
+    Parameters:
+    ----------
+    uvd: UVData Object
+        Sample observation from the desired night, used for getting antenna information.
+    _data_sq: Dict
+        Square of delay spectra, formatted as _data_sq[(ant1, ant2, pol)]
+    pol: String
+        String of polarization
+    """
+    nodes, antDict, inclNodes = generate_nodeDict(uvd)
     ants = uvd.get_ants()
+    sorted_ants = sort_antennas(uvd)
     freqs = uvd.freq_array[0]
+    taus = np.fft.fftshift(np.fft.fftfreq(freqs.size, np.diff(freqs)[0]))*1e9
     times = uvd.time_array
-    lsts = uvd.lst_array
-    taus = np.fft.fftshift(np.fft.fftfreq(freqs.size, np.diff(freqs)[0]))
+    lsts = uvd.lst_array*3.819719
+    inds = np.unique(lsts,return_index=True)[1]
+    lsts = [lsts[ind] for ind in sorted(inds)]
+    
+    maxants = 0
+    polnames = ['nn','ee','ne','en']
+    for node in nodes:
+        n = len(nodes[node]['ants'])
+        if n>maxants:
+            maxants = n
     
     Nants = len(ants)
-    Nside = int(np.ceil(np.sqrt(Nants)))
-    Yside = int(np.ceil(float(Nants)/Nside))
+    Nside = maxants
+    Yside = len(inclNodes)
     
     t_index = 0
     jd = times[t_index]
     utc = Time(jd, format='jd').datetime
     
+    status_colors = {
+        'dish_maintenance' : 'salmon',
+        'dish_ok' : 'red',
+        'RF_maintenance' : 'lightskyblue',
+        'RF_ok' : 'royalblue',
+        'digital_maintenance' : 'plum',
+        'digital_ok' : 'mediumpurple',
+        'calibration_maintenance' : 'lightgreen',
+        'calibration_ok' : 'green',
+        'calibration_triage' : 'lime'}
+    status_abbreviations = {
+        'dish_maintenance' : 'dish-M',
+        'dish_ok' : 'dish-OK',
+        'RF_maintenance' : 'RF-M',
+        'RF_ok' : 'RF-OK',
+        'digital_maintenance' : 'dig-M',
+        'digital_ok' : 'dig-OK',
+        'calibration_maintenance' : 'cal-M',
+        'calibration_ok' : 'cal-OK',
+        'calibration_triage' : 'cal-Tri'}
+    h = cm_active.ActiveData(at_date=jd)
+    h.load_apriori()
     
-    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2,Nside*2))
-    if pol == 'ee':
-        fig.suptitle("delay spectrum (auto) waterfalls from {0} -- {1} East Polarization".format(times[0], times[-1]), fontsize=14)
+    custom_lines = []
+    labels = []
+    for s in status_colors.keys():
+        c = status_colors[s]
+        custom_lines.append(Line2D([0],[0],color=c,lw=2))
+        labels.append(s)
+    ptitle = 1.92/(Yside*3)
+    fig, axes = plt.subplots(Yside, Nside, figsize=(16,Yside*3))
+    if pol == 0:
+        fig.suptitle("nn polarization", fontsize=14, y=1+ptitle)
+        vmin, vmax = -50, -30
+    elif pol == 1:
+        fig.suptitle("ee polarization", fontsize=14, y=1+ptitle)
+        vmin, vmax = -50, -30
+    elif pol == 2:
+        fig.suptitle("ne polarization", fontsize=14, y=1+ptitle)
+        vmin, vmax = -30, 0
     else:
-        fig.suptitle("delay spectrum (auto) waterfalls from {0} -- {1} North Polarization".format(times[0], times[-1]), fontsize=14)
+        fig.suptitle("en polarization", fontsize=14, y=1+ptitle)
+        vmin, vmax = -30, 0
+    fig.legend(custom_lines,labels,bbox_to_anchor=(0.7,1),ncol=3)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.subplots_adjust(left=.1, bottom=.1, right=.9, top=.9, wspace=0.05, hspace=0.2)
+    fig.subplots_adjust(left=0, bottom=.1, right=.9, top=1, wspace=0.1, hspace=0.3)
 
-    k = 0
-    for i in range(Yside):
-        for j in range(Nside):
+    xticks = np.int32(np.ceil(np.linspace(0,len(taus)-1,5)))
+    xticklabels = np.around(taus[xticks],0)
+    yticks = [int(i) for i in np.linspace(0,len(lsts)-1,6)]
+    yticklabels = [np.around(lsts[ytick],1) for ytick in yticks]
+    for i,n in enumerate(inclNodes):
+        ants = nodes[n]['ants']
+        j = 0
+        for _,a in enumerate(sorted_ants):
+            if a not in ants:
+                continue
+            status = h.apriori[f'HH{a}:A'].status
+            abb = status_abbreviations[status]
             ax = axes[i,j]
-            if k < Nants:
-                key = (ants[k], ants[k], pol)
-                ds = 10.*np.log10(np.sqrt(np.abs(_data_sq[key])/np.abs(_data_sq[key]).max(axis=1)[:,np.newaxis]))
-                im = ax.imshow(ds, aspect='auto', rasterized=True,
-                           interpolation='nearest', vmin = -50, vmax = -30, 
-                           extent=[taus[0]*1e9, taus[-1]*1e9, np.max(lsts), np.min(lsts)])
-        
-                ax.set_title(str(ants[k]), fontsize=10)
+            key = (a, a, polnames[pol])
+            ds = 10.*np.log10(np.sqrt(np.abs(_data_sq[key])/np.abs(_data_sq[key]).max(axis=1)[:,np.newaxis]))
+            im = ax.imshow(ds, aspect='auto', interpolation='nearest', vmin=vmin, vmax=vmax)
+            ax.set_title(f'{a} ({abb})', fontsize=10, backgroundcolor=status_colors[status])
+            if i == len(inclNodes)-1:
+                ax.set_xticks(xticks)
+                ax.set_xticklabels(xticklabels)
+                ax.set_xlabel('Delay (ns)', fontsize=10)
+                [t.set_rotation(70) for t in ax.get_xticklabels()]
             else:
-                ax.axis('off')
+                ax.set_xticks(xticks)
+                ax.set_xticklabels([])
             if j != 0:
+                ax.set_yticks(yticks)
                 ax.set_yticklabels([])
             else:
                 [t.set_fontsize(12) for t in ax.get_yticklabels()]
-                ax.set_ylabel('Time(LST)', fontsize=10)
-            if i != Yside-1:
-                ax.set_xticklabels([])
-            else:
-                [t.set_fontsize(10) for t in ax.get_xticklabels()]
-                [t.set_rotation(25) for t in ax.get_xticklabels()]
-                ax.xaxis.set_major_formatter(FormatStrFormatter('%.3f'))
-                ax.set_xlabel('Delay (ns)', fontsize=10)
-            k += 1
-        
-    cbar_ax=fig.add_axes([0.95,0.15,0.02,0.7])        
-    cb = fig.colorbar(im, cax=cbar_ax)
-    cb.set_label('dB')
+                ax.set_ylabel('Time (LST)', fontsize=10)
+                ax.set_yticks(yticks)
+                ax.set_yticklabels(yticklabels)
+                ax.set_ylabel('Time (LST)', fontsize=10)
+            j += 1
+        for k in range(j,maxants):
+            axes[i,k].axis('off')
+        pos = ax.get_position()
+        cbar_ax=fig.add_axes([0.91,pos.y0,0.01,pos.height])        
+        cbar = fig.colorbar(im, cax=cbar_ax)
+        cbar.set_label(f'Node {n}',rotation=270, labelpad=15)
+#         cbarticks = [np.around(x,1) for x in np.linspace(vmin,vmax,7)[i] for i in cbar.get_ticks()]
+#         cbar.set_ticklabels(cbarticks)
+#         axes[i,maxants-1].annotate(f'Node {n}', (.97,pos.y0+.03),xycoords='figure fraction',rotation=270)
     fig.show()
+
+def plot_antFeatureMap(uvd, _data_sq, JD, pol='ee'):
+    """
+    Plots the positions of all antennas that have data, colored by feature strength.
+    Parameters
+    ----------
+    uvd: UVData object
+        Observation to extract antenna numbers and positions from
+    _data_sq: Dict
+        Dictionary structured as _data_sq[(antenna number, antenna number, pol)], where the values are the 
+        feature strength that will determined the color on the map.
+    JD: Int
+        Julian date of the data
+    pol: String
+        Polarization to plot
+    """
     
-def plot_ds(uvd, uvd_diff, _data_sq_cleaned, data_rs, skip_wgts=0.2):            
-    matplotlib.rcParams.update({'font.size': 8})
+    nd = {0: {'pos': [21.427320986820824, -30.722353385032143],
+      'ants': [0, 1, 2, 11, 12, 13, 14, 23, 24, 25, 26, 39]},
+     1: {'pos': [21.427906055943357, -30.722367970752067],
+      'ants': [3, 4, 5, 6, 15, 16, 17, 18, 27, 28, 29, 30]},
+     2: {'pos': [21.428502498826337, -30.722356438400826],
+      'ants': [7, 8, 9, 10, 19, 20, 21, 31, 32, 33, 321, 323]},
+     3: {'pos': [21.427102788863543, -30.72199587048034],
+      'ants': [36, 37, 38, 50, 51, 52, 53, 65, 66, 67, 68, 320]},
+     4: {'pos': [21.427671849802184, -30.7220282862175],
+      'ants': [40, 41, 42, 54, 55, 56, 57, 69, 70, 71, 72, 324]},
+     5: {'pos': [21.42829977472493, -30.722027118338183],
+      'ants': [43, 44, 45, 46, 58, 59, 60, 73, 74, 75, 76, 322]},
+     6: {'pos': [21.428836727299945, -30.72219119740069],
+      'ants': [22, 34, 35, 47, 48, 49, 61, 62, 63, 64, 77, 78]},
+     7: {'pos': [21.426862825121685, -30.72169978685838],
+      'ants': [81, 82, 83, 98, 99, 100, 116, 117, 118, 119, 137, 138]},
+     8: {'pos': [21.427419087275524, -30.72169615183073],
+      'ants': [84, 85, 86, 87, 101, 102, 103, 104, 120, 121, 122, 123]},
+     9: {'pos': [21.42802904166864, -30.721694142092485],
+      'ants': [88, 89, 90, 91, 105, 106, 107, 108, 124, 125, 126, 325]},
+     10: {'pos': [21.42863899600041, -30.721692129488424],
+      'ants': [92, 93, 94, 109, 110, 111, 112, 127, 128, 129, 130, 328]},
+     11: {'pos': [21.42914035998215, -30.721744794462655],
+      'ants': [79, 80, 95, 96, 97, 113, 114, 115, 131, 132, 133, 134]},
+     12: {'pos': [21.426763768223857, -30.72133448059758],
+      'ants': [135, 136, 155, 156, 157, 158, 176, 177, 178, 179, 329, 333]},
+     13: {'pos': [21.42734159294201, -30.72141297904905],
+      'ants': [139, 140, 141, 142, 159, 160, 161, 162, 180, 181, 182, 183]},
+     14: {'pos': [21.428012089958028, -30.721403280585722],
+      'ants': [143, 144, 145, 146, 163, 164, 165, 166, 184, 185, 186, 187]},
+     15: {'pos': [21.428561498114107, -30.721408957468245],
+      'ants': [147, 148, 149, 150, 167, 168, 169, 170, 188, 189, 190, 191]},
+     16: {'pos': [21.42914681969319, -30.721434635693182],
+      'ants': [151, 152, 153, 154, 171, 172, 173, 174, 192, 193, 194, 213]},
+     17: {'pos': [21.426857989080208, -30.72109992091893],
+      'ants': [196, 197, 198, 199, 215, 216, 217, 218, 233, 234, 235, 337]},
+     18: {'pos': [21.427443064426363, -30.7210702936363],
+      'ants': [200, 201, 202, 203, 219, 220, 221, 222, 236, 237, 238, 239]},
+     19: {'pos': [21.428053014877808, -30.72106828382215],
+      'ants': [204, 205, 206, 207, 223, 224, 225, 226, 240, 241, 242, 243]},
+     20: {'pos': [21.428662965267904, -30.721066271142263],
+      'ants': [208, 209, 210, 211, 227, 228, 229, 244, 245, 246, 261, 262]},
+     21: {'pos': [21.429383860959977, -30.721211242305866],
+      'ants': [175, 195, 212, 214, 231, 232, 326, 327, 331, 332, 336, 340]},
+     22: {'pos': [21.427060077987438, -30.720670550054763],
+      'ants': [250, 251, 252, 253, 266, 267, 268, 269, 281, 282, 283, 295]},
+     23: {'pos': [21.42767002595312, -30.720668542063535],
+      'ants': [254, 255, 256, 257, 270, 271, 272, 273, 284, 285, 286, 287]},
+     24: {'pos': [21.42838974031629, -30.720641805595115],
+      'ants': [258, 259, 260, 274, 275, 276, 288, 289, 290, 291, 302, 303]},
+     25: {'pos': [21.429052089734615, -30.720798251186455],
+      'ants': [230, 247, 248, 249, 263, 264, 265, 279, 280, 335, 339]},
+     26: {'pos': [21.427312432981267, -30.720413813332755],
+      'ants': [296, 297, 298, 308, 309, 310, 330, 334, 338, 341, 346, 347]},
+     27: {'pos': [21.42789750442093, -30.72038427427254],
+      'ants': [299, 300, 301, 311, 312, 313, 314, 342, 343]},
+     28: {'pos': [21.428507450517774, -30.72038226236355],
+      'ants': [304, 305, 315, 316, 317, 318, 348]},
+     29: {'pos': [21.42885912979846, -30.72052728164184],
+      'ants': [277, 278, 292, 293, 294, 306, 307, 319, 344, 345, 349]}}
+    
     freqs = uvd.freq_array[0]
-    taus = np.fft.fftshift(np.fft.fftfreq(freqs.size, np.diff(freqs)[0]))
+    taus = np.fft.fftshift(np.fft.fftfreq(freqs.size, np.diff(freqs)[0]))*1e9
+    idx_region1 = np.where(np.logical_and(taus > 2500, taus < 3000))[0]
+    idx_region2 = np.where(np.logical_and(taus > 2000, taus < 2500))[0]
+    
+    fig = plt.figure(figsize=(14,10))
+    nodes, antDict, inclNodes = generate_nodeDict(uvd)
+    antnums = uvd.get_ants()
+    cmap = plt.get_cmap('inferno')
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=0, vmax=10))
+    sm._A = []
+    ampmax = 10
+    ampmin = 0
+    rang = ampmax-ampmin
+    for node in sorted(inclNodes):
+        ants = sorted(nodes[node]['ants'])
+        nodeamps = []
+        points = np.zeros((len(ants),2))
+        for i,antNum in enumerate(ants):
+            key = (antNum, antNum, pol)
+            idx = np.argwhere(uvd.antenna_numbers == antNum)[0][0]
+            antPos = uvd.antenna_positions[idx]
+            amp = 10*np.log10(np.sqrt(np.nanmean(np.abs(_data_sq[key][:,idx_region1]))/np.nanmean(np.abs(_data_sq[key][:,idx_region2]))))
+            nodeamps.append(amp)
+            points[i,:] = [antPos[1],antPos[2]]
+        hull = scipy.spatial.ConvexHull(points)
+        center = np.average(points,axis=0)
+        hullpoints = np.zeros((len(hull.simplices),2))
+        namp = np.nanmean(nodeamps)
+        ncolor = cmap(float((namp-ampmin)/rang))
+        plt.fill(points[hull.vertices,0], points[hull.vertices,1],alpha=0.5,color=ncolor)
+    for node in sorted(inclNodes):
+        ants = sorted(nodes[node]['ants'])
+        npos = nd[int(node)]['pos']
+        plt.plot(npos[0],npos[1],marker="s",markersize=15,color="black")
+        for antNum in ants:
+            idx = np.argwhere(uvd.antenna_numbers == antNum)[0][0]
+            antPos = uvd.antenna_positions[idx]
+            key = (antNum, antNum, pol)
+            amp = 10*np.log10(np.sqrt(np.nanmean(np.abs(_data_sq[key][:,idx_region1]))/np.nanmean(np.abs(_data_sq[key][:,idx_region2]))))
+            if math.isnan(amp):
+                marker="v"
+                color="r"
+                markersize=30
+            else:
+                coloramp = cmap(float((amp-ampmin)/rang))
+                color = coloramp
+                marker="h"
+                markersize=40
+            plt.plot(antPos[1],antPos[2],marker=marker,markersize=markersize,color=color)
+            if coloramp[0]>0.6 or math.isnan(amp):
+                plt.text(antPos[1]-3,antPos[2],str(antNum),color='black')
+            else:
+                plt.text(antPos[1]-3,antPos[2],str(antNum),color='white')
+    plt.title('Antenna map - {} polarization (JD{})'.format(pol, JD))
+    cbar = fig.colorbar(sm)
+    cbar.set_label('2700ns Feature Amplitude (dB)')
+
+def make_html_dspec(HHfiles, html_filename, bls, uvd, uvd_diff, _data_cleaned_sq, data_rs_sq, JD):
+
+    freqs = uvd.freq_array[0]
+
     FM_idx = np.searchsorted(freqs*1e-6, [85,110])
     flag_FM = np.zeros(freqs.size, dtype=bool)
     flag_FM[FM_idx[0]:FM_idx[1]] = True
-    
-    ants = np.sort(uvd.get_ants())
-    pols = ['nn','ee']
-    colors = ['b','r']
+
+    pols = ['nn', 'ee']
+    freqs1 = [40, 50, 120, 155, 190]
+    freqs2 = [250, 85, 155, 190, 225]
+    freq_range = freqs1+freqs2
+
+    _data_sq_sub = {}
+    data_rs_sq_sub = {}
+    for freq1, freq2 in zip(freqs1, freqs2):
+        if(freq1 == 40):
+            _data_sq_sub[(freq1, freq2)] = _data_cleaned_sq
+            data_rs_sq_sub[(freq1, freq2)] = data_rs_sq
+        else:
+            _d_sq_sub, d_rs_sq_sub = clean_ds(HHfiles, bls, uvd, uvd_diff, freq_range=[freq1, freq2], pols=['nn','ee'])
+            _data_sq_sub[(freq1, freq2)] = _d_sq_sub
+            data_rs_sq_sub[(freq1, freq2)] = d_rs_sq_sub
+
+    bls = [(ant, ant) for ant in uvd.get_ants()]
+    pols = ['nn', 'ee']
     nodes, antDict, inclNodes = generate_nodeDict(uvd)
 
-    for i, ant in enumerate(ants):
-        i2 = i % 2
-        if(i2 == 0):
-            fig = plt.figure(figsize=(10, 3), dpi=110)
-            grid = plt.GridSpec(5, 4, wspace=0.55, hspace=2)
+    data_full = []
+    wgts_full = []
+    taus_full = []
+    _data_full = []
+    _diff_full = []
+    _diff_full2 = []
+    N_xaxis = []
+    N_aggr = [0]
+    keys = []
+    for i, bl in enumerate(bls):
         for j, pol in enumerate(pols):
-            key = (ant,ant,pol)
-
-            ax = fig.add_subplot(grid[:5, 0+i2*2])
-
-            ds_ave = np.sqrt(np.abs(np.nanmean(_data_sq_cleaned[key], axis=0)))
-            _diff = np.fft.fftshift(np.fft.ifft(uvd_diff.get_data(key)), axes=1)
-            ns_ave = np.abs(np.nanmean(_diff, axis=0))
-            ns_ave_ = np.sqrt(np.abs(np.mean(_diff.conj()*_diff, axis=0))/(2*_diff.shape[0]))
-            norm = np.max(ds_ave)
-            plt.plot(taus*1e9, 10*np.log10(ds_ave/norm), color=colors[j], label=pols[j], linewidth=0.7)
-            plt.plot(taus*1e9, 10*np.log10(ns_ave/norm), color=colors[j], alpha=0.5, linewidth=0.5)
-            plt.plot(taus*1e9, 10*np.log10(ns_ave_/norm), color=colors[j], ls='--', linewidth=0.5)
-            plt.axvspan(250, 500, alpha=0.2, facecolor='y')
-            plt.axvspan(2500, 3000, alpha=0.2, facecolor='g')
-            plt.axvspan(3500, 4000, alpha=0.2, facecolor='m')
-            
-            plt.legend(loc='upper right', bbox_to_anchor=(1.0, 0.95), frameon=False)
-            plt.xlim(0,4500)
-            plt.ylim(-60,0)
-            plt.title('ant {}'.format(ant))
-            plt.xlabel(r'$\tau$ (ns)')
-            plt.ylabel(r'$|\tilde{V}(\tau)|$ in dB')
-            for yl in range(-50,0,10):
-                plt.axhline(y=yl, color='k', lw=0.5, alpha=0.1)
-            if(j == 0):
-                plt.annotate('node {} (snap {})'.format(antDict[ant]['node'],antDict[ant]['snapLocs'][0]), xy=(0.04,0.930), xycoords='axes fraction')
-
-            ax2 = fig.add_subplot(grid[:3, 1+i2*2])
+            key = (bl[0],bl[1],pol)
+            keys.append(str(key)+' -- node {} (snap {})'.format(int(antDict[bl[0]]['node']),antDict[bl[0]]['snapLocs'][0]))
             auto = np.abs(uvd.get_data(key))
-            auto_ave = np.mean(auto/np.median(auto, axis=1)[:,np.newaxis], axis=0)
-            wgts = (~uvd.get_flags(key)*~flag_FM[np.newaxis,:]).astype(float)
-            wgts = np.where(wgts > skip_wgts, wgts, 0)
-            auto_flagged = auto/wgts
-            auto_flagged[np.isinf(auto_flagged)] = np.nan
-            auto_flagged_ave = np.nanmean(auto_flagged/np.nanmedian(auto_flagged, axis=1)[:,np.newaxis], axis=0)
+            auto /= np.median(auto, axis=1)[:,np.newaxis]
+            auto[np.isinf(auto)] = np.nan
+            auto_ave = np.nanmean(auto, axis=0, dtype=np.float32)
 
-            plt.plot(freqs/1e6, np.log10(auto_ave), linewidth=1.0, color=colors[j], label='autocorrelation')
-            plt.plot(freqs/1e6, np.log10(auto_flagged_ave*0.7), linewidth=1.0, color=colors[j], alpha=0.5)
-            if(j == 0):
-                plt.legend(loc='upper center', bbox_to_anchor=(0.5, 1.18), frameon=False, handlelength=0, handletextpad=0)
-            plt.xlim(freqs.min()/1e6, freqs.max()/1e6)
-            plt.ylabel(r'log$_{10}(|V(\nu)|)$')
-            plt.ylim(-1, 0.7)
+            wgts = (~uvd.get_flags(key)*~flag_FM[np.newaxis,:]).astype(np.float32)
+            wgts_ave = np.mean(wgts, axis=0)
+            wgts_ave = np.where(wgts_ave > 0.8, 1, 0)
 
-            ax3 = fig.add_subplot(grid[3:5, 1+i2*2])
-            data_rs_ave = np.nanmean(data_rs[key]/np.nanmedian(auto_flagged, axis=1)[:,np.newaxis], axis=0)
-            plt.plot(freqs/1e6, np.log10(np.abs(data_rs_ave)), linewidth=1.0, color=colors[j], label='clean residual')
-            if(j == 0):
-                plt.legend(loc='upper center', bbox_to_anchor=(0.5, 1.31), frameon=False, handlelength=0, handletextpad=0)
-            plt.xlim(freqs.min()/1e6, freqs.max()/1e6)
-            plt.ylim(-5,0)
-            plt.xlabel(r'$\nu$ (MHz)')
-            plt.ylabel(r'log$_{10}(|V(\nu)|)$')
-    matplotlib.rcParams.update({'font.size': 10})
-            
-def plot_ds_diagnosis(uvd_diff, _data_sq_cleaned):
-    freqs = uvd_diff.freq_array[0]
-    taus = np.fft.fftshift(np.fft.fftfreq(freqs.size, np.diff(freqs)[0]))
-    
-    ants = np.sort(uvd_diff.get_ants())
-    pols = ['nn','ee']
-    colors = ['b','r']
-    nodes, antDict, inclNodes = generate_nodeDict(uvd_diff)
-    marker = ['o', 'x', 'P', 's', 'd', 'p', '<', 'h', '+', '>', 'X', '*']
-    
-    nodes = []
-    ds_ave_250_500_nn, ds_ave_250_500_ee = [], []
-    ds_peak_2500_3000_nn, ds_peak_2500_3000_ee = [], []
-    ds_ratio_3500_4000_nn, ds_ratio_3500_4000_ee = [], []
-    for ant in ants:
-        nodes.append(int(antDict[ant]['node']))
-        for pol in pols:
-            key = (ant,ant,pol)            
-            ds_ave = np.sqrt(np.abs(np.nanmean(_data_sq_cleaned[key], axis=0)))
-            _diff = np.fft.fftshift(np.fft.ifft(uvd_diff.get_data(key)), axes=1)
-            ns_ave = np.sqrt(np.abs(np.mean(_diff.conj()*_diff, axis=0))/(2*_diff.shape[0]))
-            norm = np.max(ds_ave)
-            idx_region1 = (np.abs(taus)*1e9 > 250) * (np.abs(taus)*1e9 < 500)
-            idx_region2 = (np.abs(taus)*1e9 > 2500) * (np.abs(taus)*1e9 < 3000)
-            idx_region_out = (np.abs(taus)*1e9 > 3000) * (np.abs(taus)*1e9 < 3200)
-            idx_region3 = (np.abs(taus)*1e9 > 3500) * (np.abs(taus)*1e9 < 4000)
-            if(pol == 'nn'):
-                ds_ave_250_500_nn.append(np.nanmean(ds_ave[idx_region1]/norm))
-                ds_peak_2500_3000_nn.append(np.std(ds_ave[idx_region2])/np.std(ds_ave[idx_region_out]))
-                ds_ratio_3500_4000_nn.append(np.nanmean(ds_ave[idx_region3])/np.mean(ns_ave[idx_region3]))
+            if(np.isnan(np.mean(auto_ave)) != True):
+                data_full = data_full + list(auto_ave)
             else:
-                ds_ave_250_500_ee.append(np.nanmean(ds_ave[idx_region1]/norm))
-                ds_peak_2500_3000_ee.append(np.std(ds_ave[idx_region2])/np.std(ds_ave[idx_region_out]))
-                ds_ratio_3500_4000_ee.append(np.nanmean(ds_ave[idx_region3])/np.mean(ns_ave[idx_region3]))
-    nodes = np.array(nodes)
-    N_nodes = nodes.size
-    ds_ave_250_500_nn = np.array(ds_ave_250_500_nn)
-    ds_ave_250_500_ee = np.array(ds_ave_250_500_ee)
-    ds_peak_2500_3000_nn = np.array(ds_peak_2500_3000_nn)
-    ds_peak_2500_3000_ee = np.array(ds_peak_2500_3000_ee)
-    ds_ratio_3500_4000_nn = np.array(ds_ratio_3500_4000_nn)
-    ds_ratio_3500_4000_ee = np.array(ds_ratio_3500_4000_ee)
+                data_full = data_full + list(np.isnan(auto_ave).astype(float))
+            wgts_full = wgts_full + list(wgts_ave)
+
+            for freq1, freq2 in zip(freqs1, freqs2):
+                _data_ave = np.sqrt(np.abs(np.nanmean(_data_sq_sub[(freq1,freq2)][key], axis=0))).astype(np.float32)
+                idx_freq = np.where(np.logical_and(freqs*1e-6 > freq1, freqs*1e-6 < freq2))[0]
             
-    plt.figure(figsize=(15,15))
-    plt.subplot(3,1,1)
-    node_number = np.unique(nodes)
-    for i, node in enumerate(node_number):
-        idx_ant = np.where(nodes == node)[0]
-        plt.plot(ants[idx_ant], 10*np.log10(ds_ave_250_500_nn[idx_ant]), 'bo', label='nn', marker=marker[i%N_nodes])
-        plt.plot(ants[idx_ant], 10*np.log10(ds_ave_250_500_ee[idx_ant]), 'ro', label='ee', marker=marker[i%N_nodes])
-        if(i == 0):
-            plt.legend()
-    for i, ant in enumerate(ants):
-        plt.annotate('{}'.format(ant), xy=(ants[i], 10*np.log10(ds_ave_250_500_nn[i])))
-    plt.xlabel('Antenna number')
-    plt.ylabel('dB (relative to the peak)')
-    plt.title('Averaged delay spectrum at 250-500 ns')
-    plt.subplot(3,1,2)
-    for i, node in enumerate(node_number):
-        idx_ant = np.where(nodes == node)[0]
-        plt.plot(ants[idx_ant], ds_peak_2500_3000_nn[idx_ant], 'bo', label='nn', marker=marker[i%N_nodes])
-        plt.plot(ants[idx_ant], ds_peak_2500_3000_ee[idx_ant], 'ro', label='ee', marker=marker[i%N_nodes])
-        if(i == 0):
-            plt.legend()
-    for i, ant in enumerate(ants):
-        plt.annotate('{}'.format(ant), xy=(ants[i], ds_peak_2500_3000_nn[i]))
-    plt.axhline(y=1, ls='--', color='k')
-    plt.xlabel('Antenna number')
-    plt.ylabel('$\sigma_{2500-3000}/\sigma_{3000-3200}$')
-    plt.title('Standard deviation ratio between 2500-3000 ns and 3000-3200 ns')
-    plt.subplot(3,1,3)
-    for i, node in enumerate(node_number):
-        idx_ant = np.where(nodes == node)[0]
-        plt.plot(ants[idx_ant], 10*np.log10(ds_ratio_3500_4000_nn[idx_ant]), 'bo', label='nn', marker=marker[i%N_nodes])
-        plt.plot(ants[idx_ant], 10*np.log10(ds_ratio_3500_4000_ee[idx_ant]), 'ro', label='ee', marker=marker[i%N_nodes])
-        if(i == 0):
-            plt.legend()
-    for i, ant in enumerate(ants):
-        plt.annotate('{}'.format(ant), xy=(ants[i], 10*np.log10(ds_ratio_3500_4000_nn[i])))
-    plt.axhline(y=0, ls='--', color='k')
-    plt.xlabel('Antenna number')
-    plt.ylabel('Deviation from the noise level in dB')
-    plt.title('Deviation of averaged delay spectrum at 3500-4000 ns from the noise level')
-    plt.subplots_adjust(hspace=0.4)
+                win = dspec.gen_window('bh7', idx_freq.size)
+                _diff = np.fft.fftshift(np.fft.ifft(uvd_diff.get_data(key)[:,idx_freq]*win), axes=1)
+#                 _diff_ave = np.abs(np.mean(_diff, axis=0)).astype(np.float32)
+                _diff_ave = np.sqrt(np.abs(np.mean(_diff.conj()*_diff, axis=0))/(_diff.shape[0])).astype(np.float32)
+#                 _diff_ave = np.sqrt(np.abs(_diff.conj()*_diff)[0]/(_diff.shape[0])).astype(np.float32)
+
+                if(np.isnan(np.mean(_data_ave)) != True and np.mean(_data_ave) != 0):
+                    _data_full = _data_full + list(10*np.log10(_data_ave/_data_ave.max()))
+                    _diff_full = _diff_full + list(10*np.log10(_diff_ave/_data_ave.max()))
+                else:
+                    _data_full = _data_full + list(np.isnan(_data_ave).astype(float))
+                    _diff_full = _diff_full + list(np.isnan(_diff_ave).astype(float))
+
+                if(i == 0 and j == 0):
+                    freqs_sub = freqs[idx_freq]
+                    taus_sub = np.float32(np.fft.fftshift(np.fft.fftfreq(freqs_sub.size, np.diff(freqs_sub)[0])))
+                    taus_full = taus_full + list(taus_sub*1e9)
+                    N_xaxis.append(len(freqs_sub))
+                    N_aggr.append(np.sum(N_xaxis))
+
+    x_le = taus_full[:freqs.size]
+    ds_update = _data_full[:freqs.size]
+    dff_update = _diff_full[:freqs.size]
+    x_ri = freqs/1e6
+    auto_update = np.log10(data_full[:freqs.size])
+    auto_flagged_update = np.array(auto_update, dtype=np.float32)/np.array(wgts_full[:freqs.size], dtype=np.float32)-0.1
+
+    source = ColumnDataSource(data=dict(x_le=x_le, ds_update=ds_update, dff_update=dff_update, N_xaxis=N_xaxis, N_aggr=N_aggr, 
+                                        taus_full=taus_full, _data_full=_data_full, _diff_full=_diff_full,
+                                        x_ri=x_ri, auto_update=auto_update, auto_flagged_update=auto_flagged_update,
+                                        data_full=data_full, wgts_full=wgts_full))
+
+    plot1 = figure(title="Delay spectrum", x_range=(0, 4500), y_range=(-60, 0), plot_width=450, plot_height=400, output_backend="canvas")
+    plot1.line('x_le', 'ds_update', source=source, color='#1f77b4', line_width=2, alpha=0.8, legend_label='delay spectrum')
+    plot1.line('x_le', 'dff_update', source=source, color='red', line_width=1.5, alpha=0.8, legend_label='noise from diff')
+    plot1.xaxis.axis_label = '𝜏 (ns)'
+    plot1.yaxis.axis_label = '|Ṽ (𝜏)| in dB'
+
+    plot2 = figure(title="Autocorrelation", y_range=(-0.6, 0.4), x_range=Range1d(start=freqs.min()/1e6, end=freqs.max()/1e6), plot_width=450, plot_height=400, output_backend="canvas")
+    plot2.line('x_ri', 'auto_update', source=source, color='#ff7f0e', line_width=2, alpha=0.8, legend_label='unflagged auto')
+    plot2.line('x_ri', 'auto_flagged_update', source=source, color='#1f77b4', line_width=2, alpha=0.8, legend_label='flagged auto')
+    plot2.xaxis.axis_label = '𝜈 (MHz)'
+    plot2.yaxis.axis_label = 'log10(|V(𝜈)|)'
+
+    radio_button = RadioButtonGroup(labels=["Full band", "50-85 MHz", "120-155 MHz", "155-190 MHz", "190-225 MHz"], active=0)
+    select = Select(title="key:", value=keys[0], options=keys, width=300)
+
+    callback = CustomJS(args=dict(source=source, select=select, radio_button=radio_button, xr=plot2.x_range),
+                        code="""
+        var data = source.data;
+        var active = radio_button.active;
+        var key = select.value;
+        var keys = select.options;
+        var x_le = [];
+        var y1_le = [];
+        var y2_le = [];
+        var y1_ri = [];
+        var y2_ri = [];
+        var N_xaxis = data['N_xaxis'];
+        var N_aggr = data['N_aggr'];
+        var taus_full = data['taus_full'];
+        var _data_full = data['_data_full'];
+        var _diff_full = data['_diff_full'];
+        var x_ri = data['x_ri']
+        var data_full = data['data_full']
+        var wgts_full = data['wgts_full']
+        for (var i = 0; i < keys.length; i++) {
+            if (key == keys[i]) {
+                for (j = 0; j < N_xaxis[active]; j++) {
+                    x_le.push(taus_full[N_aggr[active]+j]);
+                    y1_le.push(_data_full[N_aggr[5]*i+N_aggr[active]+j]);
+                    y2_le.push(_diff_full[N_aggr[5]*i+N_aggr[active]+j]);
+                }
+                for (var j = 0; j < x_ri.length; j++) {
+                    y1_ri.push(Math.log10(data_full[x_ri.length*i+j]));
+                    y2_ri.push(Math.log10(data_full[x_ri.length*i+j])/wgts_full[x_ri.length*i+j]-0.1);
+                }
+            }
+        }
+        data['x_le'] = x_le;
+        data['ds_update'] = y1_le;
+        data['dff_update'] = y2_le;
+        data['auto_update'] = y1_ri;
+        data['auto_flagged_update'] = y2_ri;
+        if (active == 0) {
+            var start = 46.92
+            var end = 234.30
+        }
+        else if (active == 1) {
+            var start = 50
+            var end = 85
+        }
+        else {
+            var start = 120+(active-2)*35
+            var end = 120+(active-1)*35
+        }
+        xr.setv({"start": start, "end": end})
+        source.change.emit();
+    """)
+
+    radio_button.js_on_change('active', callback)
+    select.js_on_change('value', callback)
+    plot2.x_range.js_on_change('start', callback)
+    plot2.x_range.js_on_change('end', callback)
+
+
+    layout = column(
+        row(plot1, plot2),
+        select,
+        column(radio_button)
+    )
+
+    output_file(html_filename, title="delay_spectrum_JD{}".format(JD))
+
+    show(layout)
     
-def plot_ds_nodes(uvd_diff, _data_sq_cleaned):
-    freqs = uvd_diff.freq_array[0]
-    taus = np.fft.fftshift(np.fft.fftfreq(freqs.size, np.diff(freqs)[0]))
+def CorrMatrix_2700ns(uvd, HHfiles, difffiles, flagfile, JD):
+    """
+    Plots a matrix representing the 2700ns feature correlation of each baseline.
     
-    ants = np.sort(uvd_diff.get_ants())
-    pols = ['nn','ee']
-    colors = ['b','r']
-    nodes, antDict, inclNodes = generate_nodeDict(uvd_diff)
+    Parameters:
+    ----------
+    uvd: UVData Object
+        Sample observation from the desired night, used for getting antenna information.
+    HHfiles: List
+        List of all files for a night of observation
+    difffiles: List
+        List of diff files for a night of observation
+    flagfile: String
+        Sting of flag file
+    JD: String
+        JD of the given night of observation
+    """
+    pols = ['nn','ee','ne','en']
     
-    nodes = []
-    ds_ave_nn, ns_ave_nn = [], []
-    ds_ave_ee, ns_ave_ee = [], []
-    for ant in ants:
-        nodes.append(int(antDict[ant]['node']))
-        for pol in pols:
-            key = (ant,ant,pol)
-            ds_ave = np.sqrt(np.abs(np.nanmean(_data_sq_cleaned[key], axis=0)))
-            _diff = np.fft.fftshift(np.fft.ifft(uvd_diff.get_data(key)), axes=1)
-            ns_ave = np.abs(np.nanmean(_diff, axis=0))
-            norm = np.max(ds_ave)
-            if(pol == 'nn'):
-                ds_ave_nn.append(ds_ave/norm)
-                ns_ave_nn.append(ns_ave/norm)
-            else:
-                ds_ave_ee.append(ds_ave/norm)
-                ns_ave_ee.append(ns_ave/norm)
-                
-    nodes = np.array(nodes)
-    ds_ave_nn = np.array(ds_ave_nn).reshape(ants.size,taus.size)
-    ns_ave_nn = np.array(ns_ave_nn).reshape(ants.size,taus.size)
-    ds_ave_ee = np.array(ds_ave_ee).reshape(ants.size,taus.size)
-    ns_ave_ee = np.array(ns_ave_ee).reshape(ants.size,taus.size)
-    node_number = np.unique(nodes)
-    for i, node in enumerate(node_number):
-        if(i % 2 == 0):
-            plt.figure(figsize=(16,4))
-        for j, pol in enumerate(pols):
-            plt.subplot(1,4,2*(i%2)+j+1)
-            idx_ant = np.where(nodes == node)[0]
-            if(pol == 'nn'):
-                for idx in idx_ant:
-                    plt.plot(taus*1e9, 10*np.log10(ds_ave_nn[idx]), label='({},{})'.format(ants[idx],ants[idx]), linewidth=0.8)
-            else:                
-                for idx in idx_ant:
-                    plt.plot(taus*1e9, 10*np.log10(ds_ave_ee[idx]), label='({},{})'.format(ants[idx],ants[idx]), linewidth=0.8)
-            plt.xlim(0,4500)
-            plt.ylim(-55,0)
-            plt.title('node {}, {}'.format(node, pol))
-            plt.xlabel(r'$\tau$ (ns)')
-            if(i % 2 == 0 and j == 0):
-                plt.ylabel(r'$|\tilde{V}(\tau)|$ in dB')
-            plt.grid(axis='y')        
-            plt.legend(loc='upper left', ncol=2)
-        
-def plot_wfds_cr(uvd, _data_sq, pol):
-    bls = uvd.get_antpairs()
-    freqs = uvd.freq_array[0]
-    times = uvd.time_array
-    lsts = uvd.lst_array
-    taus = np.fft.fftshift(np.fft.fftfreq(freqs.size, np.diff(freqs)[0]))
-    idx_mid = np.where(taus == 0)[0]
+    Nants = len(uvd.get_ants())
+    files, lsts, inds = get_hourly_files(uvd, HHfiles, JD)
     
-    Nants = len(uvd.get_antpairs())
-    Nside = int(np.ceil(np.sqrt(Nants)))
-    Yside = int(np.ceil(float(Nants)/Nside))
+    antpos, ants = uvd.get_ENU_antpos()
+    bl_len = []
+    for antpair in uvd.get_antpairs():
+        idx_ant1 = np.where(antpair[0] == ants)[0]
+        idx_ant2 = np.where(antpair[1] == ants)[0]
+        bl_len.append(np.sqrt(np.sum((antpos[idx_ant2]-antpos[idx_ant1])**2)))
+    bl_len = np.array(bl_len)
+    area = 250+bl_len/scipy.constants.c*1e9
     
-    t_index = 0
-    jd = times[t_index]
-    utc = Time(jd, format='jd').datetime
-    
-    
-    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2,Nside*2), dpi=75)
-    if pol == 'ee':
-        fig.suptitle("delay spectrum (cross) waterfalls from {0} -- {1} East Polarization".format(times[0], times[-1]), fontsize=14)
+    nTimes = len(files)
+    if nTimes > 3:
+        plotTimes = [0,nTimes//2,nTimes-1]
     else:
-        fig.suptitle("delay spectrum (cross) waterfalls from {0} -- {1} North Polarization".format(times[0], times[-1]), fontsize=14)
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.subplots_adjust(left=.1, bottom=.1, right=.9, top=.9, wspace=0.05, hspace=0.2)
+        plotTimes = np.arange(0,nTimes,1)
 
-    k = 0
-    for i in range(Yside):
-        for j in range(Nside):
-            ax = axes[i,j]
-            if k < Nants:
-                key = (bls[k][0], bls[k][1], pol)
-                ds = 10.*np.log10(np.sqrt(np.abs(_data_sq[key])/np.abs(_data_sq[key][:,idx_mid])))
-                im = ax.imshow(ds, aspect='auto', rasterized=True,
-                           interpolation='nearest', vmin = -30, vmax = 0, 
-                           extent=[taus[0]*1e9, taus[-1]*1e9, np.max(lsts), np.min(lsts)])
+    for t in plotTimes:
+        ind = inds[t]
+        HHfile = HHfiles[ind]
+        difffile = difffiles[ind]
+        uvd_data_ds = UVData()
+        uvd_data_ds.read(HHfile)
+        uvd_diff_ds = UVData()
+        uvd_diff_ds.read(difffile)
+        uvf = UVFlag()
+        uvf.read(flagfile)
+        bls = uvd_data_ds.get_antpairs()
+        times_uvf = np.unique(uvf.time_array)
+        times_uvd = np.unique(uvd_data_ds.time_array)
+        idx_times = [np.where(time_uvd == times_uvf)[0][0] for time_uvd in times_uvd]
+        uvd_data_ds.flag_array[:,0,:,:] = np.repeat(uvf.flag_array[idx_times], len(bls), axis=0)
+
+        _d_cleaned_sq, _ = clean_ds([HHfile], bls, uvd_data_ds, uvd_diff_ds, pols=pols, area=area)
+
+        freqs = uvd_data_ds.freq_array[0]
+        taus = np.fft.fftshift(np.fft.fftfreq(freqs.size, np.diff(freqs)[0]))*1e9
+        idx_region1 = np.where(np.logical_and(taus > 2500, taus < 3000))[0]
+        idx_region2 = np.where(np.logical_and(taus > 2000, taus < 2500))[0]
+
+        amp = {}
+        for pol in pols:
+            _data_cleaned_sq = np.zeros((Nants, Nants, len(taus)), dtype=np.complex128)
+            for i, ant1 in enumerate(uvd_data_ds.get_ants()):
+                for j, ant2 in enumerate(uvd_data_ds.get_ants()):
+                    if(i <= j):
+                        bl = (ant1, ant2)
+                        try:
+                            _data_cleaned_sq[i,j] = np.nanmean(_d_cleaned_sq[(bl[0],bl[1],pol)], axis=0)
+                        except:
+                            _data_cleaned_sq[i,j] = np.nanmean(_d_cleaned_sq[(bl[1],bl[0],pol)], axis=0)
+                        _data_cleaned_sq[j,i] = _data_cleaned_sq[i,j]
+            amp[pol] = 10*np.log10(np.sqrt(np.nanmean(np.abs(_data_cleaned_sq[:,:,idx_region1]), axis=-1)/np.nanmean(np.abs(_data_cleaned_sq[:,:,idx_region2]), axis=-1)))
+
+        plotCorrMatrix(uvd_data_ds, amp, pols=pols, nodes='auto', vminIn=0, vmaxIn=3)
         
-                ax.set_title(str(bls[k]), fontsize=10)
-            else:
-                ax.axis('off')
-            if j != 0:
-                ax.set_yticklabels([])
-            else:
-                [t.set_fontsize(12) for t in ax.get_yticklabels()]
-                ax.set_ylabel('Time(LST)', fontsize=10)
-            if i != Yside-1:
-                ax.set_xticklabels([])
-            else:
-                [t.set_fontsize(10) for t in ax.get_xticklabels()]
-                [t.set_rotation(25) for t in ax.get_xticklabels()]
-                ax.xaxis.set_major_formatter(FormatStrFormatter('%.3f'))
-                ax.set_xlabel('Delay (ns)', fontsize=10)
-            k += 1
-        
-    cbar_ax=fig.add_axes([0.95,0.15,0.02,0.7])        
-    cb = fig.colorbar(im, cax=cbar_ax)
-    cb.set_label('dB')
-    fig.show()
 def plot_metric(metrics, ants=None, antpols=None, title='', ylabel='Modified z-Score', xlabel=''):
     '''Helper function for quickly plotting an individual antenna metric.'''
 
