@@ -96,7 +96,7 @@ def read_a_priori_ant_flags(a_priori_flags_yaml, ant_indices_only=False, by_ant_
     return list(set(apaf))
 
 def load_data(data_path,JD):
-    HHfiles = sorted(glob.glob("{0}/zen.{1}.*.HH.uvh5".format(data_path,JD)))
+    HHfiles = sorted(glob.glob("{0}/zen.{1}.*.sum.uvh5".format(data_path,JD)))
     Nfiles = len(HHfiles)
     hhfile_bases = map(os.path.basename, HHfiles)
     sep = '.'
