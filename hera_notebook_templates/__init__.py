@@ -4,5 +4,6 @@
 
 from . import version
 from . import utils
+from . import utils_h1c
 
 __version__ = version.version
