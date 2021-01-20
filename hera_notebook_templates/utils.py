@@ -43,19 +43,7 @@ warnings.filterwarnings('ignore')
 
 
 def get_use_ants(uvd,statuses,jd):
-    status_abbreviations = {
-        'dish_maintenance' : 'dish-M',
-        'dish_ok' : 'dish-OK',
-        'RF_maintenance' : 'RF-M',
-        'RF_ok' : 'RF-OK',
-        'digital_maintenance' : 'dig-M',
-        'digital_ok' : 'dig-OK',
-        'calibration_maintenance' : 'cal-M',
-        'calibration_ok' : 'cal-OK',
-        'calibration_triage' : 'cal-Tri'}
     statuses = statuses.split(',')
-#     known_good = ["digital_ok","calibration_maintenance","calibration_ok","calibration_triage"]
-#     maybe_good = ["RF_ok","digital_maintenance","digital_ok","calibration_maintenance","calibration_ok","calibration_triage"]
     ants = uvd.antenna_numbers
     use_ants = []
     h = cm_active.ActiveData(at_date=jd)
