@@ -258,33 +258,24 @@ def plot_sky_map(uvd,ra_pad=20,dec_pad=30,clip=True,fwhm=11,nx=300,ny=200,source
     plt.xlabel('RA (ICRS)')
     plt.ylabel('DEC (ICRS)')
     lsts = uvd.lst_array*3.819719
-    print(lsts[0])
-    print(lsts[-1])
-#     inds = np.unique(lsts,return_index=True)[1]
-#     lsts = [lsts[ind] for ind in sorted(inds)]
-#     lst_xticks = [int(i) for i in np.linspace(0,len(lsts)-1,8)]
-#     ra_ticks, ra_labels = plt.xticks()
-#     ra_ticklabels = plt.get_xticklabels()
-#     lst_ticks = []
-#     for ra in ra_ticks:
-#         coord = sc(ra,dec_min,frame='icrs', unit='deg',location=loc)
-# #         t = Time(location=loc)
-#         print(coord.ra.hour)
-#     plt.xticks(ra_ticks,ra_labels)
-#     lst_labels = np.around([lsts[i] for i in lst_xticks],2)
-#     plt.xticks(lst_xticks,lst_labels)
-    
-#     plt.set_xticklabels(lst_labels)
+    inds = np.unique(lsts,return_index=True)[1]
+    lsts = [lsts[ind] for ind in sorted(inds)]
+    lsts_use = lsts[0::52]
+    xcoords = np.linspace(start_coords[0],end_coords[0],len(lsts))[0::52]
     plt.xlabel('RA (ICRS)')
     plt.ylabel('DEC (ICRS)')
     plt.hlines(y=start_coords[1]-fwhm/2,xmin=ra[-1],xmax=ra[0],linestyles='dashed')
     plt.hlines(y=start_coords[1]+fwhm/2,xmin=ra[-1],xmax=ra[0],linestyles='dashed')
-    plt.vlines(x=start_coords[0],ymin=start_coords[1],ymax=dec[-1],linestyles='dashed')
+#     plt.vlines(x=start_coords[0],ymin=start_coords[1],ymax=dec[-1],linestyles='dashed')
     plt.vlines(x=end_coords[0],ymin=start_coords[1],ymax=dec[-1],linestyles='dashed')
-    plt.annotate(np.around(lst_start,2),xy=(start_coords[0],dec[-1]),xytext=(0,8),
-                 fontsize=10,xycoords='data',textcoords='offset points',horizontalalignment='center')
+#     plt.annotate(np.around(lst_start,2),xy=(start_coords[0],dec[-1]),xytext=(0,8),
+#                  fontsize=10,xycoords='data',textcoords='offset points',horizontalalignment='center')
     plt.annotate(np.around(lst_end,2),xy=(end_coords[0],dec[-1]),xytext=(0,8),
                  fontsize=10,xycoords='data',textcoords='offset points',horizontalalignment='center')
+    for i,lst in enumerate(lsts_use):
+        plt.annotate(np.around(lst,2),xy=(xcoords[i],dec[-1]),xytext=(0,8),
+                 fontsize=10,xycoords='data',textcoords='offset points',horizontalalignment='center')
+        plt.vlines(x=xcoords[i],ymin=start_coords[1],ymax=dec[-1],linestyles='dashed')
     plt.annotate('LST (hours)',xy=(np.average([start_coords[0],end_coords[0]]),dec[-1]),
                 xytext=(0,22),fontsize=10,xycoords='data',textcoords='offset points',horizontalalignment='center')
     for s in sources:
