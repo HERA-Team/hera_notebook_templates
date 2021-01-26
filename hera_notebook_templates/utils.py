@@ -278,18 +278,21 @@ def plot_sky_map(uvd,ra_pad=20,dec_pad=30,clip=True,fwhm=11,nx=300,ny=200,source
         plt.vlines(x=xcoords[i],ymin=start_coords[1],ymax=dec[-1],linestyles='dashed')
     plt.annotate('LST (hours)',xy=(np.average([start_coords[0],end_coords[0]]),dec[-1]),
                 xytext=(0,22),fontsize=10,xycoords='data',textcoords='offset points',horizontalalignment='center')
+    print(ra[0])
+    print(ra[-1])
     for s in sources:
-        if s[1] > dec[0] and s[1] < dec[-1] and s[0]>ra[0] and s[0]<ra[-1]:
+        if s[1] > dec[0] and s[1] < dec[-1]:
             if s[0] > 180:
                 s = (s[0]-360,s[1],s[2])
-            if s[2] == 'LMC' or s[2] == 'SMC':
-                plt.annotate(s[2],xy=(s[0],s[1]),xycoords='data',fontsize=8,xytext=(20,-20),
-                             textcoords='offset points',arrowprops=dict(facecolor='black', shrink=2,width=1,
-                                                                        headwidth=4))
-            else:
-                plt.scatter(s[0],s[1],c='k',s=6)
-                if len(s[2]) > 0:
-                    plt.annotate(s[2],xy=(s[0]+3,s[1]-4),xycoords='data',fontsize=6)
+            if s[0]>ra[0] and s[0]<ra[-1]:
+                if s[2] == 'LMC' or s[2] == 'SMC':
+                    plt.annotate(s[2],xy=(s[0],s[1]),xycoords='data',fontsize=8,xytext=(20,-20),
+                                 textcoords='offset points',arrowprops=dict(facecolor='black', shrink=2,width=1,
+                                                                            headwidth=4))
+                else:
+                    plt.scatter(s[0],s[1],c='k',s=6)
+                    if len(s[2]) > 0:
+                        plt.annotate(s[2],xy=(s[0]+3,s[1]-4),xycoords='data',fontsize=6)
     plt.show()
     plt.close()
     hdulist.close()
