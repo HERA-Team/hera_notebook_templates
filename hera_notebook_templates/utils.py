@@ -278,8 +278,6 @@ def plot_sky_map(uvd,ra_pad=20,dec_pad=30,clip=True,fwhm=11,nx=300,ny=200,source
         plt.vlines(x=xcoords[i],ymin=start_coords[1],ymax=dec[-1],linestyles='dashed')
     plt.annotate('LST (hours)',xy=(np.average([start_coords[0],end_coords[0]]),dec[-1]),
                 xytext=(0,22),fontsize=10,xycoords='data',textcoords='offset points',horizontalalignment='center')
-    print(ra[0])
-    print(ra[-1])
     for s in sources:
         if s[1] > dec[0] and s[1] < dec[-1]:
             if s[0] > 180:
