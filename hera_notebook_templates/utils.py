@@ -219,7 +219,9 @@ def plot_sky_map(uvd,ra_pad=20,dec_pad=30,clip=True,fwhm=11,nx=300,ny=200,source
     
     # Sample a 300x200 grid in RA/Dec
     ra_range = [zenith_start.ra.degree-ra_pad, zenith_end.ra.degree+ra_pad]
-    dec_range = [zenith_start.dec.degree-ra_pad, zenith_end.dec.degree+ra_pad]
+    if ra_range[0]>180:
+        ra_range[0] = ra_range[0]-360
+    dec_range = [zenith_start.dec.degree-dec_pad, zenith_end.dec.degree+dec_pad]
     if clip == True:
         ra = np.linspace(ra_range[0],ra_range[1], nx)
         dec = np.linspace(dec_range[0],dec_range[1], ny)
@@ -250,7 +252,29 @@ def plot_sky_map(uvd,ra_pad=20,dec_pad=30,clip=True,fwhm=11,nx=300,ny=200,source
     # Make a plot of the interpolated temperatures
     plt.figure(figsize=(12, 7))
     im = plt.imshow(tmap, extent=[ra[-1], ra[0], dec[0], dec[-1]], 
-                    cmap=plt.cm.viridis, aspect='auto', vmin=10,vmax=40,alpha=alphas,origin='lower')
+                cmap=plt.cm.viridis, aspect='auto', vmin=10,vmax=40,alpha=alphas,origin='lower')
+#     im = plt.imshow(tmap, 
+#                     cmap=plt.cm.viridis, aspect='auto', vmin=10,vmax=40,alpha=alphas,origin='lower')
+    plt.xlabel('RA (ICRS)')
+    plt.ylabel('DEC (ICRS)')
+    lsts = uvd.lst_array*3.819719
+    print(lsts[0])
+    print(lsts[-1])
+#     inds = np.unique(lsts,return_index=True)[1]
+#     lsts = [lsts[ind] for ind in sorted(inds)]
+#     lst_xticks = [int(i) for i in np.linspace(0,len(lsts)-1,8)]
+#     ra_ticks, ra_labels = plt.xticks()
+#     ra_ticklabels = plt.get_xticklabels()
+#     lst_ticks = []
+#     for ra in ra_ticks:
+#         coord = sc(ra,dec_min,frame='icrs', unit='deg',location=loc)
+# #         t = Time(location=loc)
+#         print(coord.ra.hour)
+#     plt.xticks(ra_ticks,ra_labels)
+#     lst_labels = np.around([lsts[i] for i in lst_xticks],2)
+#     plt.xticks(lst_xticks,lst_labels)
+    
+#     plt.set_xticklabels(lst_labels)
     plt.xlabel('RA (ICRS)')
     plt.ylabel('DEC (ICRS)')
     plt.hlines(y=start_coords[1]-fwhm/2,xmin=ra[-1],xmax=ra[0],linestyles='dashed')
@@ -264,7 +288,7 @@ def plot_sky_map(uvd,ra_pad=20,dec_pad=30,clip=True,fwhm=11,nx=300,ny=200,source
     plt.annotate('LST (hours)',xy=(np.average([start_coords[0],end_coords[0]]),dec[-1]),
                 xytext=(0,22),fontsize=10,xycoords='data',textcoords='offset points',horizontalalignment='center')
     for s in sources:
-        if s[1] > dec[0] and s[1] < dec[-1]:
+        if s[1] > dec[0] and s[1] < dec[-1] and s[0]>ra[0] and s[0]<ra[-1]:
             if s[0] > 180:
                 s = (s[0]-360,s[1],s[2])
             if s[2] == 'LMC' or s[2] == 'SMC':
