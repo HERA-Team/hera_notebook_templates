@@ -41,6 +41,28 @@ from bokeh.plotting import figure, output_file, show, ColumnDataSource
 import scipy
 warnings.filterwarnings('ignore')
 
+# useful global variables
+status_colors = {
+    'dish_maintenance' : 'salmon',
+    'dish_ok' : 'red',
+    'RF_maintenance' : 'lightskyblue',
+    'RF_ok' : 'royalblue',
+    'digital_maintenance' : 'plum',
+    'digital_ok' : 'mediumpurple',
+    'calibration_maintenance' : 'lightgreen',
+    'calibration_ok' : 'green',
+    'calibration_triage' : 'lime'}
+status_abbreviations = {
+    'dish_maintenance' : 'dish-M',
+    'dish_ok' : 'dish-OK',
+    'RF_maintenance' : 'RF-M',
+    'RF_ok' : 'RF-OK',
+    'digital_maintenance' : 'dig-M',
+    'digital_ok' : 'dig-OK',
+    'calibration_maintenance' : 'cal-M',
+    'calibration_ok' : 'cal-OK',
+    'calibration_triage' : 'cal-Tri'}
+
 
 def get_use_ants(uvd,statuses,jd):
     statuses = statuses.split(',')
@@ -337,26 +359,6 @@ def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts={},tempAnts={},crossedAnts=
     return inspectAnts
     
 def auto_waterfall_lineplot(uv, ant, jd, pols=['xx','yy'], colorbar_min=1e6, colorbar_max=1e8, title=''):
-    status_colors = {
-        'dish_maintenance' : 'salmon',
-        'dish_ok' : 'red',
-        'RF_maintenance' : 'lightskyblue',
-        'RF_ok' : 'royalblue',
-        'digital_maintenance' : 'plum',
-        'digital_ok' : 'mediumpurple',
-        'calibration_maintenance' : 'lightgreen',
-        'calibration_ok' : 'green',
-        'calibration_triage' : 'lime'}
-    status_abbreviations = {
-        'dish_maintenance' : 'dish-M',
-        'dish_ok' : 'dish-OK',
-        'RF_maintenance' : 'RF-M',
-        'RF_ok' : 'RF-OK',
-        'digital_maintenance' : 'dig-M',
-        'digital_ok' : 'dig-OK',
-        'calibration_maintenance' : 'cal-M',
-        'calibration_ok' : 'cal-OK',
-        'calibration_triage' : 'cal-Tri'}
     h = cm_active.ActiveData(at_date=jd)
     h.load_apriori()
     status = h.apriori[f'HH{ant}:A'].status
@@ -457,26 +459,6 @@ def plot_autos(uvdx, uvdy):
     jd = times[t_index]
     utc = Time(jd, format='jd').datetime
     
-    status_colors = {
-        'dish_maintenance' : 'salmon',
-        'dish_ok' : 'red',
-        'RF_maintenance' : 'lightskyblue',
-        'RF_ok' : 'royalblue',
-        'digital_maintenance' : 'plum',
-        'digital_ok' : 'mediumpurple',
-        'calibration_maintenance' : 'lightgreen',
-        'calibration_ok' : 'green',
-        'calibration_triage' : 'lime'}
-    status_abbreviations = {
-        'dish_maintenance' : 'dish-M',
-        'dish_ok' : 'dish-OK',
-        'RF_maintenance' : 'RF-M',
-        'RF_ok' : 'RF-OK',
-        'digital_maintenance' : 'dig-M',
-        'digital_ok' : 'dig-OK',
-        'calibration_maintenance' : 'cal-M',
-        'calibration_ok' : 'cal-OK',
-        'calibration_triage' : 'cal-Tri'}
     h = cm_active.ActiveData(at_date=jd)
     h.load_apriori()
 
@@ -550,26 +532,6 @@ def plot_wfs(uvd, pol, mean_sub=False, save=False, jd=''):
     jd = times[t_index]
     utc = Time(jd, format='jd').datetime
     
-    status_colors = {
-        'dish_maintenance' : 'salmon',
-        'dish_ok' : 'red',
-        'RF_maintenance' : 'lightskyblue',
-        'RF_ok' : 'royalblue',
-        'digital_maintenance' : 'plum',
-        'digital_ok' : 'mediumpurple',
-        'calibration_maintenance' : 'lightgreen',
-        'calibration_ok' : 'green',
-        'calibration_triage' : 'lime'}
-    status_abbreviations = {
-        'dish_maintenance' : 'dish-M',
-        'dish_ok' : 'dish-OK',
-        'RF_maintenance' : 'RF-M',
-        'RF_ok' : 'RF-OK',
-        'digital_maintenance' : 'dig-M',
-        'digital_ok' : 'dig-OK',
-        'calibration_maintenance' : 'cal-M',
-        'calibration_ok' : 'cal-OK',
-        'calibration_triage' : 'cal-Tri'}
     h = cm_active.ActiveData(at_date=jd)
     h.load_apriori()
     ptitle = 1.92/(Yside*3)
@@ -643,26 +605,6 @@ def plot_mean_subtracted_wfs(uvd, use_ants, jd, pols=['xx','yy']):
     Nants = len(ants) 
     pol_labels = ['NN','EE']
     
-    status_colors = {
-        'dish_maintenance' : 'salmon',
-        'dish_ok' : 'red',
-        'RF_maintenance' : 'lightskyblue',
-        'RF_ok' : 'royalblue',
-        'digital_maintenance' : 'plum',
-        'digital_ok' : 'mediumpurple',
-        'calibration_maintenance' : 'lightgreen',
-        'calibration_ok' : 'green',
-        'calibration_triage' : 'lime'}
-    status_abbreviations = {
-        'dish_maintenance' : 'dish-M',
-        'dish_ok' : 'dish-OK',
-        'RF_maintenance' : 'RF-M',
-        'RF_ok' : 'RF-OK',
-        'digital_maintenance' : 'dig-M',
-        'digital_ok' : 'dig-OK',
-        'calibration_maintenance' : 'cal-M',
-        'calibration_ok' : 'cal-OK',
-        'calibration_triage' : 'cal-Tri'}
     h = cm_active.ActiveData(at_date=jd)
     h.load_apriori()
     
@@ -1993,26 +1935,6 @@ def plot_wfds(uvd, _data_sq, pol):
     jd = times[t_index]
     utc = Time(jd, format='jd').datetime
     
-    status_colors = {
-        'dish_maintenance' : 'salmon',
-        'dish_ok' : 'red',
-        'RF_maintenance' : 'lightskyblue',
-        'RF_ok' : 'royalblue',
-        'digital_maintenance' : 'plum',
-        'digital_ok' : 'mediumpurple',
-        'calibration_maintenance' : 'lightgreen',
-        'calibration_ok' : 'green',
-        'calibration_triage' : 'lime'}
-    status_abbreviations = {
-        'dish_maintenance' : 'dish-M',
-        'dish_ok' : 'dish-OK',
-        'RF_maintenance' : 'RF-M',
-        'RF_ok' : 'RF-OK',
-        'digital_maintenance' : 'dig-M',
-        'digital_ok' : 'dig-OK',
-        'calibration_maintenance' : 'cal-M',
-        'calibration_ok' : 'cal-OK',
-        'calibration_triage' : 'cal-Tri'}
     h = cm_active.ActiveData(at_date=jd)
     h.load_apriori()
     
