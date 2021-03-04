@@ -66,14 +66,16 @@ status_abbreviations = {
 
 def get_use_ants(uvd,statuses,jd):
     statuses = statuses.split(',')
-    ants = uvd.antenna_numbers
+    ants = np.unique(np.concatenate((uvd.ant_1_array, uvd.ant_2_array)))
     use_ants = []
     h = cm_active.ActiveData(at_date=jd)
     h.load_apriori()
-    for ant in ants:
-        status = h.apriori[f'HH{ant}:A'].status
-        if status in statuses:
-            use_ants.append(ant)
+    for ant_name in h.apriori:
+        ant = int("".join(filter(str.isdigit, ant_name)))
+        if ant in ants:
+            status = h.apriori[ant_name].status
+            if status in statuses:
+                use_ants.append(ant)
     return use_ants
 
 def read_template(pol='XX'):
