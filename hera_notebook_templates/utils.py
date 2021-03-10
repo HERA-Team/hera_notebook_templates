@@ -1343,7 +1343,7 @@ def get_baseline_groups(uv, bl_groups=[(14,0,'14m E-W'),(29,0,'29m E-W'),(14,-11
     """
     
     bls={}
-    baseline_groups,vec_bin_centers,lengths = uv.get_redundancies(use_antpos=True,include_autos=False)
+    baseline_groups,vec_bin_centers,lengths = uv.get_redundancies(use_antpos=False,include_autos=False)
     for i in range(len(baseline_groups)):
         bl = baseline_groups[i]
         for group in bl_groups:
@@ -1626,7 +1626,7 @@ def get_baseline_type(uv,bl_type=(14,0,'14m E-W'),use_ants='auto'):
         List of lists of redundant baseline numbers. Returns None if the provided bl_type is not found.
     """
     
-    baseline_groups,vec_bin_centers,lengths = uv.get_redundancies(use_antpos=True,include_autos=False)
+    baseline_groups,vec_bin_centers,lengths = uv.get_redundancies(use_antpos=False,include_autos=False)
     for i in range(len(baseline_groups)):
         bl = baseline_groups[i]
         if np.abs(lengths[i]-bl_type[0])<1:
