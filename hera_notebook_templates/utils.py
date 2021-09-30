@@ -337,10 +337,10 @@ def plot_sky_map(uvd,ra_pad=20,dec_pad=30,clip=True,fwhm=11,nx=300,ny=200,source
     plt.vlines(x=end_coords[0],ymin=start_coords[1],ymax=dec[-1],linestyles='dashed')
 #     plt.annotate(np.around(lst_start,2),xy=(start_coords[0],dec[-1]),xytext=(0,8),
 #                  fontsize=10,xycoords='data',textcoords='offset points',horizontalalignment='center')
-    plt.annotate(np.around(lst_end,2),xy=(end_coords[0],dec[-1]),xytext=(0,8),
+    plt.annotate(np.around(lst_end,1),xy=(end_coords[0],dec[-1]),xytext=(0,8),
                  fontsize=10,xycoords='data',textcoords='offset points',horizontalalignment='center')
     for i,lst in enumerate(lsts_use):
-        plt.annotate(np.around(lst,2),xy=(xcoords[i],dec[-1]),xytext=(0,8),
+        plt.annotate(np.around(lst,1),xy=(xcoords[i],dec[-1]),xytext=(0,8),
                  fontsize=10,xycoords='data',textcoords='offset points',horizontalalignment='center')
         plt.vlines(x=xcoords[i],ymin=start_coords[1],ymax=dec[-1],linestyles='dashed')
     plt.annotate('LST (hours)',xy=(np.average([start_coords[0],end_coords[0]]),dec[-1]),
@@ -1107,7 +1107,7 @@ def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
     plt.close()
     return rat
     
-def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.25, plotRatios=False):
+def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.35, plotRatios=False):
     """
     Calculates a matrix of phase correlations between antennas, where each pixel is calculated as (even/abs(even)) * (conj(odd)/abs(odd)), and then averaged across time and frequency.
     
@@ -1155,8 +1155,8 @@ def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.25, pl
                 odd = (s - d)/2
                 odd = np.divide(odd,np.abs(odd))
                 product = np.multiply(even,np.conj(odd))
-                data[pol][i,j] = np.abs(np.mean(product))
-                thisAnt.append(np.abs(np.mean(product)))
+                data[pol][i,j] = np.abs(np.nanmean(product))
+                thisAnt.append(np.abs(np.nanmean(product)))
             pgood = np.count_nonzero(~np.isnan(thisAnt))/len(thisAnt)
             if (np.nanmedian(thisAnt) < badThresh or pgood<0.2) and antnumsAll[i] not in badAnts:
                 if pol[0]==pol[1]:
@@ -1182,7 +1182,7 @@ def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.25, pl
                     else:
                         polAnts[ant] = 1
                     if polAnts[ant] == 4:
-                        badAnts.append(ant)  
+                        badAnts.append(ant)
     return data, badAnts
 
 
@@ -1481,6 +1481,7 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='auto',badThresh=
                 print(f'WARNING: unable to read {file}')
                 continue
         matrix, badAnts = calcEvenOddAmpMatrix(sm,df,nodes='auto',pols=mat_pols,badThresh=badThresh,plotRatios=plotRatios)
+        bad_antennas=badAnts
         if plotMatrix is True and f in plotTimes:
             plotCorrMatrix(sm, matrix, pols=mat_pols, nodes='auto',plotRatios=plotRatios)
         for group in bl_type:
@@ -1504,9 +1505,6 @@ def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='auto',badThresh=
 #                 print(f'No baselines of type {group}')
                 continue
             baselines = [uv.baseline_to_antnums(bl) for bl in bls]
-            for ant in badAnts:
-                if ant not in bad_antennas:
-                    bad_antennas.append(ant)
             if removeBadAnts is True:
                 nodeInfo = {
                     'inter' : getInternodeMedians(sm,matrix,badAnts=bad_antennas, baselines=baselines,pols=pols),
