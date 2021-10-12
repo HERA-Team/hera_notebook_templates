@@ -2051,10 +2051,7 @@ def plot_wfds(uvd, _data_sq, pol):
         vmin, vmax = -50, -30
     elif pol == 2:
         fig.suptitle("ne polarization", fontsize=14, y=1+ptitle)
-        vmin, vmax = -30, 0
-    else:
-        fig.suptitle("en polarization", fontsize=14, y=1+ptitle)
-        vmin, vmax = -30, 0
+        vmin, vmax = -50, -30
     fig.legend(custom_lines,labels,bbox_to_anchor=(0.7,1),ncol=3)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.subplots_adjust(left=0, bottom=.1, right=.9, top=1, wspace=0.1, hspace=0.3)
@@ -2073,7 +2070,13 @@ def plot_wfds(uvd, _data_sq, pol):
             abb = status_abbreviations[status]
             ax = axes[i,j]
             key = (a, a, polnames[pol])
-            ds = 10.*np.log10(np.sqrt(np.abs(_data_sq[key])/np.abs(_data_sq[key]).max(axis=1)[:,np.newaxis]))
+            if(pol == 0 or pol == 1):
+                norm = np.abs(_data_sq[key]).max(axis=1)[:,np.newaxis]
+            elif(pol == 2):
+                key1 = (a, a, polnames[0])
+                key2 = (a, a, polnames[1])
+                norm = np.sqrt(np.abs(_data_sq[key1])*np.abs(_data_sq[key2])).max(axis=1)[:,np.newaxis]
+            ds = 10.*np.log10(np.sqrt(np.abs(_data_sq[key])/norm))
             im = ax.imshow(ds, aspect='auto', interpolation='nearest', vmin=vmin, vmax=vmax)
             ax.set_title(f'{a} ({abb})', fontsize=10, backgroundcolor=status_colors[status])
             if i == len(inclNodes)-1:
