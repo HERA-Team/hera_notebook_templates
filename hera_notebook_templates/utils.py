@@ -2804,3 +2804,149 @@ def all_ant_mets(antmetfiles,HHfiles):
     grn_ptch = mpatches.Patch(color='green')
     blu_ptch = mpatches.Patch(color='blue')
     ax.legend([red_ptch, blu_ptch, grn_ptch], ['dead ant', 'cross ant', 'good ant'], fontsize=14)
+
+class Antenna:
+    '''Data structure for season data for an individual antenna'''
+    def __init__(self, number, node=None):
+        self.number = number
+        self.node = node
+        
+        self.statuses = {}
+        self.auto_flags = {}
+        self.dead_flags_Jee = {}
+        self.dead_flags_Jnn = {}        
+        self.crossed_flags = {}
+        self.flags_before_redcal = {}
+        self.redcal_flags = {}
+        self.total_flags = {}
+        
+        self.ee_shape_zs = {}
+        self.nn_shape_zs = {}
+        self.ee_power_zs = {}
+        self.nn_power_zs = {}
+        self.ee_temp_var_zs = {}
+        self.nn_temp_var_zs = {}
+        self.ee_temp_discon_zs = {}
+        self.nn_temp_discon_zs = {}
+        self.Jee_dead_metrics = {}
+        self.Jnn_dead_metrics = {}
+        self.crossed_metrics = {}
+        self.Jee_chisqs = {}
+        self.Jnn_chisqs = {}
+        
+    def add_day(self, jd, csv_row):
+        '''Parses row from rtp_summary csv into this object'''
+        self.statuses[jd] = csv_row['A Priori Status']
+        
+        # Add auto_metrics info, if available
+        if 'Auto Metrics Flags' in csv_row:
+            self.auto_flags[jd] = csv_row['Auto Metrics Flags']
+            self.ee_shape_zs[jd] = csv_row['ee Shape Modified Z-Score']
+            self.nn_shape_zs[jd] = csv_row['nn Shape Modified Z-Score']
+            self.ee_power_zs[jd] = csv_row['ee Power Modified Z-Score']
+            self.nn_power_zs[jd] = csv_row['nn Power Modified Z-Score']
+            self.ee_temp_var_zs[jd] = csv_row['ee Temporal Variability Modified Z-Score']
+            self.nn_temp_var_zs[jd] = csv_row['nn Temporal Variability Modified Z-Score']
+            self.ee_temp_discon_zs[jd] = csv_row['ee Temporal Discontinuties Modified Z-Score']
+            self.nn_temp_discon_zs[jd] = csv_row['nn Temporal Discontinuties Modified Z-Score']
+        else:
+            self.auto_flags[jd] = np.nan
+            self.ee_shape_zs[jd] = np.nan
+            self.nn_shape_zs[jd] = np.nan
+            self.ee_power_zs[jd] = np.nan
+            self.nn_power_zs[jd] = np.nan
+            self.ee_temp_var_zs[jd] = np.nan
+            self.nn_temp_var_zs[jd] = np.nan
+            self.ee_temp_discon_zs[jd] = np.nan
+            self.nn_temp_discon_zs[jd] = np.nan
+
+        # Add ant_metrics info, if available
+        if 'Dead Fraction in Ant Metrics (Jee)' in csv_row:
+            self.dead_flags_Jee[jd] = csv_row['Dead Fraction in Ant Metrics (Jee)']
+            self.dead_flags_Jnn[jd] = csv_row['Dead Fraction in Ant Metrics (Jnn)']
+            self.crossed_flags[jd] = csv_row['Crossed Fraction in Ant Metrics']
+            self.Jee_dead_metrics[jd] = csv_row['Average Dead Ant Metric (Jee)']
+            self.Jnn_dead_metrics[jd] = csv_row['Average Dead Ant Metric (Jnn)']
+            self.crossed_metrics[jd] = csv_row['Average Crossed Ant Metric']
+        else:
+            self.dead_flags_Jee[jd] = np.nan
+            self.dead_flags_Jnn[jd] = np.nan
+            self.crossed_flags[jd] = np.nan
+            self.Jee_dead_metrics[jd] = np.nan
+            self.Jnn_dead_metrics[jd] = np.nan
+            self.crossed_metrics[jd] = np.nan
+        
+        # Add redcal info, if available
+        if 'Flag Fraction Before Redcal' in csv_row:
+            self.flags_before_redcal[jd] = csv_row['Flag Fraction Before Redcal']
+            self.redcal_flags[jd] = csv_row['Flagged By Redcal chi^2 Fraction']
+            self.Jee_chisqs[jd] = csv_row['Median chi^2 Per Antenna (Jee)']
+            self.Jnn_chisqs[jd] = csv_row['Median chi^2 Per Antenna (Jnn)']      
+        else:
+            self.flags_before_redcal[jd] = np.nan
+            self.redcal_flags[jd] = np.nan
+            self.Jee_chisqs[jd] = np.nan
+            self.Jnn_chisqs[jd] = np.nan
+
+        # Compute final flagging percentage
+        self.total_flags[jd] = self.auto_flags[jd]
+        if self.total_flags[jd] != 1:
+            self.total_flags[jd] = min(1, max(self.dead_flags_Jee[jd], self.dead_flags_Jnn[jd]) + self.crossed_flags[jd] + self.redcal_flags[jd])
+            
+    def unflagged_days(self, jds=None):
+        '''Computes the number of effective unflagged days, either from a fixed set of days or all days.'''
+        if jds is None:
+            jds = self.total_flags.keys()
+        return np.sum([1 - self.total_flags[jd] for jd in jds if jd in self.total_flags])
+    
+    def is_dead(self, jd):
+        '''Returns the larger of Jee and Jnn dead flags (which should be the same) on a given JD.
+        Returns np.nan if this antenna is not in the data for that day.'''
+        if jd not in self.dead_flags_Jee:
+            return np.nan
+        return np.max([self.dead_flags_Jee[jd], self.dead_flags_Jnn[jd]])
+    
+    def ant_metrics_flag_frac(self, jd):
+        '''Returns the fraction of the time this antenna is flagged as dead or crossed.
+        Returns np.nan if this antenna is no tin the data for that day.'''
+        if jd not in self.dead_flags_Jee:
+            return np.nan
+        return min(1, np.max([self.dead_flags_Jee[jd], self.dead_flags_Jnn[jd]]) + self.crossed_flags[jd])
+    
+    def most_common_flag_rationale(self, jds=None):
+        '''Returns a string describining the worst metric for the most common flag rationale,
+        either for a fixed set of days for all days. Returns np.nan if no data is available.'''
+        if jds is None:
+            jds = self.total_flags.keys()     
+            
+        ant_metrics_ff = np.nan_to_num(np.nanmean([self.ant_metrics_flag_frac(jd) for jd in jds]), nan=-np.inf)
+        auto_metrics_ff = np.nan_to_num(np.nanmean([self.auto_flags[jd] if jd in self.auto_flags else np.nan for jd in jds]), nan=-np.inf)
+        redcal_ff = np.nan_to_num(np.nanmean([self.redcal_flags[jd] if jd in self.redcal_flags else np.nan for jd in jds]), nan=-np.inf)
+        
+        if 0 == ant_metrics_ff == auto_metrics_ff == redcal_ff:
+            return 'No Flags'
+        
+        if (ant_metrics_ff > 0) and (ant_metrics_ff >= auto_metrics_ff) and (ant_metrics_ff >= redcal_ff):
+            ffs = {'Low_Corr': np.nanmean([self.is_dead(jd) for jd in jds])}
+            ffs['Crossed'] = np.nanmean([self.crossed_flags[jd] if jd in self.crossed_flags else np.nan for jd in jds])
+            return sorted(ffs.items(), key=lambda item: item[1])[-1][0]
+        
+        elif (auto_metrics_ff > 0) and (auto_metrics_ff >= ant_metrics_ff) and (auto_metrics_ff >= redcal_ff):
+            mms = {}  # metric medians
+            mms['ee_Auto_Shape'] = np.nanmedian([self.ee_shape_zs[jd] if jd in self.ee_shape_zs else np.nan for jd in jds])
+            mms['nn_Auto_Shape'] = np.nanmedian([self.nn_shape_zs[jd] if jd in self.nn_shape_zs else np.nan for jd in jds])
+            mms['ee_Auto_Power'] = np.nanmedian([self.ee_power_zs[jd] if jd in self.ee_power_zs else np.nan for jd in jds])
+            mms['nn_Auto_Power'] = np.nanmedian([self.nn_power_zs[jd] if jd in self.nn_power_zs else np.nan for jd in jds])
+            mms['ee_Auto_T_Var'] = np.nanmedian([self.ee_temp_var_zs[jd] if jd in self.ee_temp_var_zs else np.nan for jd in jds])
+            mms['nn_Auto_T_Var'] = np.nanmedian([self.nn_temp_var_zs[jd] if jd in self.nn_temp_var_zs else np.nan for jd in jds])
+            mms['ee_Auto_T_Discon'] = np.nanmedian([self.ee_temp_discon_zs[jd] if jd in self.ee_temp_discon_zs else np.nan for jd in jds])
+            mms['nn_Auto_T_Discon'] = np.nanmedian([self.nn_temp_discon_zs[jd] if jd in self.nn_temp_discon_zs else np.nan for jd in jds])
+            return sorted(mms.items(), key=lambda item: item[1])[-1][0]
+        
+        elif (redcal_ff > 0) and (redcal_ff >= ant_metrics_ff) and (redcal_ff >= auto_metrics_ff):
+            mms = {}  # metric medians
+            mms['Jee_Redcal_chisq'] = np.nanmedian([self.Jee_chisqs[jd] if jd in self.Jee_chisqs else np.nan for jd in jds])
+            mms['Jnn_Redcal_chisq'] = np.nanmedian([self.Jnn_chisqs[jd] if jd in self.Jnn_chisqs else np.nan for jd in jds])
+            return sorted(mms.items(), key=lambda item: item[1])[-1][0]            
+            
+        return np.nan    
