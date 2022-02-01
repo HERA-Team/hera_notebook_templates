@@ -815,7 +815,7 @@ def plotNodeAveragedSummary(uv,HHfiles,jd,use_ants,pols=['xx','yy'],mat_pols=['x
         axs[1][1].legend()
         axs[1][0].set_xlabel('LST (hours)')
         axs[1][1].set_xlabel('LST (hours)')
-        fig.tight_layout(pad=2)
+        fig.tight_layout()
     else:
         print('#############################################################################')
         print('Not enough LST coverage to show metric evolution - that plot is being skipped')
@@ -1268,7 +1268,7 @@ def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logSc
     cbar = fig.colorbar(im, cax=cbar_ax)
     fig.suptitle('Correlation Matrix - JD: %s, LST: %.0fh' % (str(jd),np.round(lst,0)))
     fig.subplots_adjust(top=1.28,wspace=0.05,hspace=1.1)
-    fig.tight_layout(pad=2)
+    fig.tight_layout()
     plt.show()
     plt.close()
     
@@ -1316,7 +1316,7 @@ def plot_single_matrix(uv,data,vminIn=0,vmaxIn=1,nodes='auto',logScale=False):
     cbar = fig.colorbar(im, cax=cbar_ax)
     fig.suptitle('Correlation Matrix - JD: %s, LST: %.0fh' % (str(jd),np.round(lst,0)))
     fig.subplots_adjust(top=1.28,wspace=0.05,hspace=1.1)
-    fig.tight_layout(pad=2)
+    fig.tight_layout()
     plt.show()
     plt.close()
     
