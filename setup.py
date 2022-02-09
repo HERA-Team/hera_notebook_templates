@@ -53,7 +53,6 @@ setup_args = {
         'hera_mc @ git+git://github.com/HERA-Team/hera_mc',
         'hera_qm @ git+git://github.com/HERA-Team/hera_qm',
         'bokeh',
-        'multiprocessing',
     ],
     'extras_require': {
         "all": []
