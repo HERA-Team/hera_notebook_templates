@@ -1973,7 +1973,7 @@ def func_clean_ds_mpi(rank, queue, N_threads, bls, pols, uvd_ds, uvd_diff, area,
                 _data_cleaned_sq[key] = _d_even * _d_odd.conj()
             k += 1
     queue.put([_data_cleaned_sq, d_even, d_odd])
-
+    
 def plot_wfds(uvd, _data_sq, pol):
     """
     Waterfall diagram for autocorrelation delay spectrum
@@ -2042,20 +2042,14 @@ def plot_wfds(uvd, _data_sq, pol):
         custom_lines.append(Line2D([0],[0],color=c,lw=2))
         labels.append(s)
     ptitle = 1.92/(Yside*3)
-    fig, axes = plt.subplots(Yside, Nside, figsize=(16,Yside*3))
-    if pol == 0:
-        fig.suptitle("nn polarization", fontsize=14, y=1+ptitle)
-        vmin, vmax = -50, -30
-    elif pol == 1:
-        fig.suptitle("ee polarization", fontsize=14, y=1+ptitle)
-        vmin, vmax = -50, -30
-    elif pol == 2:
-        fig.suptitle("ne polarization", fontsize=14, y=1+ptitle)
-        vmin, vmax = -50, -30
-    fig.legend(custom_lines,labels,bbox_to_anchor=(0.7,1),ncol=3)
+    
+    fig, axes = plt.subplots(Yside, Nside, figsize=(12,17+(Yside-10)))
+    fig.suptitle(" ", fontsize=14, y=1+ptitle)
+    vmin, vmax = -50, -30
+    fig.legend(custom_lines,labels,bbox_to_anchor=(0.8,1),ncol=3)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.subplots_adjust(left=0, bottom=.1, right=.9, top=1, wspace=0.1, hspace=0.3)
-
+    fig.subplots_adjust(left=0, bottom=.1, right=.9, top=0.97, wspace=0.1, hspace=0.3)
+    
     xticks = np.int32(np.ceil(np.linspace(0,len(taus)-1,5)))
     xticklabels = np.around(taus[xticks],0)
     yticks = [int(i) for i in np.linspace(0,len(lsts)-1,6)]
@@ -2078,7 +2072,7 @@ def plot_wfds(uvd, _data_sq, pol):
                 norm = np.sqrt(np.abs(_data_sq[key1])*np.abs(_data_sq[key2])).max(axis=1)[:,np.newaxis]
             ds = 10.*np.log10(np.sqrt(np.abs(_data_sq[key])/norm))
             im = ax.imshow(ds, aspect='auto', interpolation='nearest', vmin=vmin, vmax=vmax)
-            ax.set_title(f'{a} ({abb})', fontsize=10, backgroundcolor=status_colors[status])
+            ax.set_title(f'{a} ({abb})', fontsize=8, backgroundcolor=status_colors[status])
             if i == len(inclNodes)-1:
                 ax.set_xticks(xticks)
                 ax.set_xticklabels(xticklabels)
@@ -2091,17 +2085,15 @@ def plot_wfds(uvd, _data_sq, pol):
                 ax.set_yticks(yticks)
                 ax.set_yticklabels([])
             else:
-                [t.set_fontsize(12) for t in ax.get_yticklabels()]
                 ax.set_ylabel('Time (LST)', fontsize=10)
                 ax.set_yticks(yticks)
                 ax.set_yticklabels(yticklabels)
-                ax.set_ylabel('Time (LST)', fontsize=10)
             j += 1
         for k in range(j,maxants):
             axes[i,k].axis('off')
         pos = ax.get_position()
-        cbar_ax=fig.add_axes([0.91,pos.y0,0.01,pos.height])
-        cbar = fig.colorbar(im, cax=cbar_ax)
+        cbar_ax = fig.add_axes([0.91,pos.y0,0.01,pos.height])
+        cbar = fig.colorbar(im, cax=cbar_ax, ticks=[-50, -45, -40, -35, -30])
         cbar.set_label(f'Node {n}',rotation=270, labelpad=15)
 #         cbarticks = [np.around(x,1) for x in np.linspace(vmin,vmax,7)[i] for i in cbar.get_ticks()]
 #         cbar.set_ticklabels(cbarticks)
@@ -2210,12 +2202,15 @@ def plot_antFeatureMap_2700ns(uvd, _data_sq, JD, pol='ee'):
             amp = 10*np.log10(np.sqrt(np.nanmean(np.abs(_data_sq[key][:,idx_region1]))/np.nanmean(np.abs(_data_sq[key][:,idx_region2]))))
             nodeamps.append(amp)
             points[i,:] = [antPos[1],antPos[2]]
-        hull = scipy.spatial.ConvexHull(points)
-        center = np.average(points,axis=0)
-        hullpoints = np.zeros((len(hull.simplices),2))
-        namp = np.nanmean(nodeamps)
-        ncolor = cmap(float((namp-ampmin)/rang))
-        plt.fill(points[hull.vertices,0], points[hull.vertices,1],alpha=0.5,color=ncolor)
+        try:
+            hull = scipy.spatial.ConvexHull(points)
+            center = np.average(points,axis=0)
+            hullpoints = np.zeros((len(hull.simplices),2))
+            namp = np.nanmean(nodeamps)
+            ncolor = cmap(float((namp-ampmin)/rang))
+            plt.fill(points[hull.vertices,0], points[hull.vertices,1],alpha=0.5,color=ncolor)
+        except:
+            continue
     for node in sorted(inclNodes):
         ants = sorted(nodes[node]['ants'])
         npos = nd[int(node)]['pos']
@@ -2346,12 +2341,15 @@ def plot_antFeatureMap_noise(uvd, d_even, d_odd, JD, pol='ee'):
             amp = np.nanmean(get_ds_average(d_even[key], d_odd[key])[idx_region])/np.nanmean(get_ds_average(diff, diff)[idx_region])
             nodeamps.append(amp)
             points[i,:] = [antPos[1],antPos[2]]
-        hull = scipy.spatial.ConvexHull(points)
-        center = np.average(points,axis=0)
-        hullpoints = np.zeros((len(hull.simplices),2))
-        namp = np.nanmean(nodeamps)
-        ncolor = cmap(float((namp-ampmin)/rang))
-        plt.fill(points[hull.vertices,0], points[hull.vertices,1],alpha=0.5,color=ncolor)
+        try:
+            hull = scipy.spatial.ConvexHull(points)
+            center = np.average(points,axis=0)
+            hullpoints = np.zeros((len(hull.simplices),2))
+            namp = np.nanmean(nodeamps)
+            ncolor = cmap(float((namp-ampmin)/rang))
+            plt.fill(points[hull.vertices,0], points[hull.vertices,1],alpha=0.5,color=ncolor)
+        except:
+            continue
     for node in sorted(inclNodes):
         ants = sorted(nodes[node]['ants'])
         npos = nd[int(node)]['pos']
@@ -2463,6 +2461,7 @@ def interactive_plots_dspec(bls, uvd, uvd_diff, JD):
     N_xaxis = []
     N_aggr = [0]
     keys = []
+    buffer = 15
     for i, bl in enumerate(bls):
         for j, pol in enumerate(pols):
             key = (bl[0],bl[1],pol)
@@ -2477,7 +2476,7 @@ def interactive_plots_dspec(bls, uvd, uvd_diff, JD):
             wgts_ave = np.where(wgts_ave > 0.7, 1, 0)
 
             if(np.isnan(np.mean(auto_ave)) != True):
-                data_full = data_full + list(auto_ave)
+                data_full = data_full + list(np.log10(auto_ave))
             else:
                 data_full = data_full + list(np.isnan(auto_ave).astype(float))
             wgts_full = wgts_full + list(wgts_ave)
@@ -2489,6 +2488,10 @@ def interactive_plots_dspec(bls, uvd, uvd_diff, JD):
                 diff = uvd_diff.get_data(key)[:,idx_freq]
                 _data_ave = get_ds_average(d_even, d_odd)
                 _diff_ave = get_ds_average(diff, diff)
+                
+                # select the positive delays
+                _data_ave = _data_ave[idx_freq.size//2-buffer:]
+                _diff_ave = _diff_ave[idx_freq.size//2-buffer:]
 
                 if(np.isnan(np.mean(_data_ave)) != True and np.mean(_data_ave) != 0):
                     _data_full = _data_full + list(10*np.log10(_data_ave/_data_ave.max()))
@@ -2500,16 +2503,22 @@ def interactive_plots_dspec(bls, uvd, uvd_diff, JD):
                 if(i == 0 and j == 0):
                     freqs_sub = freqs[idx_freq]
                     taus_sub = np.fft.fftshift(np.fft.fftfreq(freqs_sub.size, np.diff(freqs_sub)[0]))
-                    taus_full = taus_full + list(taus_sub*1e9)
-                    N_xaxis.append(len(freqs_sub))
+                    taus_sub = taus_sub[taus_sub.size//2-buffer:]
+                    taus_full += list(taus_sub*1e9)
+                    N_xaxis.append(len(taus_sub))
                     N_aggr.append(np.sum(N_xaxis))
+                    
+    _data_full = np.array(_data_full, dtype=np.float32)
+    _diff_full = np.array(_diff_full, dtype=np.float32)
+    data_full = np.array(data_full, dtype=np.float32)
 
-    x_le = taus_full[:freqs.size]
-    ds_update = _data_full[:freqs.size]
-    dff_update = _diff_full[:freqs.size]
+    taus_full += list(np.zeros(1000)) # to bypass a bug (?) in bokeh
+    x_le = taus_full[:N_xaxis[0]]
+    ds_update = _data_full[:N_xaxis[0]]
+    dff_update = _diff_full[:N_xaxis[0]]
     x_ri = freqs/1e6
-    auto_update = np.log10(data_full[:freqs.size])
-    auto_flagged_update = np.array(auto_update, dtype=np.float64)/np.array(wgts_full[:freqs.size], dtype=np.float64)-0.1
+    auto_update = data_full[:freqs.size]
+    auto_flagged_update = auto_update/np.array(wgts_full[:freqs.size])-0.1
 
     source = ColumnDataSource(data=dict(x_le=x_le, ds_update=ds_update, dff_update=dff_update, N_xaxis=N_xaxis, N_aggr=N_aggr,
                                         taus_full=taus_full, _data_full=_data_full, _diff_full=_diff_full,
@@ -2551,9 +2560,9 @@ def interactive_plots_dspec(bls, uvd, uvd_diff, JD):
         var taus_full = data['taus_full'];
         var _data_full = data['_data_full'];
         var _diff_full = data['_diff_full'];
-        var x_ri = data['x_ri']
-        var data_full = data['data_full']
-        var wgts_full = data['wgts_full']
+        var x_ri = data['x_ri'];
+        var data_full = data['data_full'];
+        var wgts_full = data['wgts_full'];
         for (var i = 0; i < keys.length; i++) {
             if (key == keys[i]) {
                 for (var j = 0; j < N_xaxis[active]; j++) {
@@ -2562,8 +2571,8 @@ def interactive_plots_dspec(bls, uvd, uvd_diff, JD):
                     y2_le.push(_diff_full[N_aggr[5]*i+N_aggr[active]+j]);
                 }
                 for (var j = 0; j < x_ri.length; j++) {
-                    y1_ri.push(Math.log10(data_full[x_ri.length*i+j]));
-                    y2_ri.push(Math.log10(data_full[x_ri.length*i+j])/wgts_full[x_ri.length*i+j]-0.1);
+                    y1_ri.push(data_full[x_ri.length*i+j]);
+                    y2_ri.push(data_full[x_ri.length*i+j]/wgts_full[x_ri.length*i+j]-0.1);
                 }
             }
         }
