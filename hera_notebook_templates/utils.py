@@ -2214,7 +2214,7 @@ def plot_antFeatureMap_2700ns(uvd, _data_sq, JD, pol='ee'):
     for node in sorted(inclNodes):
         ants = sorted(nodes[node]['ants'])
         npos = nd[int(node)]['pos']
-        plt.plot(npos[0],npos[1],marker="s",markersize=15,color="black")
+#         plt.plot(npos[0],npos[1],marker="s",markersize=15,color="black")
         for antNum in ants:
             idx = np.argwhere(uvd.antenna_numbers == antNum)[0][0]
             antPos = uvd.antenna_positions[idx]
@@ -2353,7 +2353,7 @@ def plot_antFeatureMap_noise(uvd, d_even, d_odd, JD, pol='ee'):
     for node in sorted(inclNodes):
         ants = sorted(nodes[node]['ants'])
         npos = nd[int(node)]['pos']
-        plt.plot(npos[0],npos[1],marker="s",markersize=15,color="black")
+#         plt.plot(npos[0],npos[1],marker="s",markersize=15,color="black")
         for antNum in ants:
             idx = np.argwhere(uvd.antenna_numbers == antNum)[0][0]
             antPos = uvd.antenna_positions[idx]
