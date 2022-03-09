@@ -2048,7 +2048,7 @@ def plot_wfds(uvd, _data_sq, pol):
     vmin, vmax = -50, -30
     fig.legend(custom_lines,labels,bbox_to_anchor=(0.8,1),ncol=3)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.subplots_adjust(left=0, bottom=.1, right=.9, top=0.97, wspace=0.1, hspace=0.3)
+    fig.subplots_adjust(left=0, bottom=.1, right=.9, top=0.95, wspace=0.1, hspace=0.3)
     
     xticks = np.int32(np.ceil(np.linspace(0,len(taus)-1,5)))
     xticklabels = np.around(taus[xticks],0)
