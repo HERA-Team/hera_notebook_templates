@@ -64,8 +64,28 @@ status_abbreviations = {
     'calibration_ok' : 'cal-OK',
     'calibration_triage' : 'cal-Tri'}
 
+#####################################################################################################################
+################################################# UTILITY FUNCTIONS #################################################
+#####################################################################################################################
 
 def get_use_ants(uvd,statuses,jd):
+    """
+    Function to get a list of antennas that satisfy the specified set of antennas statuses on the given night.
+    
+    Parameters:
+    ---------
+    uvd: UVData Object
+        Sample UVData object used to collect antenna information
+    statuses: List
+        List of antenna statuses to select on.
+    jd: Int
+        JD of the observation.
+        
+    Returns:
+    ---------
+    use_ants: List
+        List of antennas that have one of the antenna statuses specified by the 'statuses' parameter on the given night.
+    """
     statuses = statuses.split(',')
     ants = np.unique(np.concatenate((uvd.ant_1_array, uvd.ant_2_array)))
     use_ants = []
@@ -79,6 +99,7 @@ def get_use_ants(uvd,statuses,jd):
                 use_ants.append(ant)
     return use_ants
 
+
 def read_template(pol='XX'):
     if pol == 'XX':
         polstr = 'north'
@@ -89,83 +110,34 @@ def read_template(pol='XX'):
         data = json.load(f)
     return data
 
-def flag_by_template(uvd,HHfiles,jd,use_ants='auto',pols=['XX','YY'],polDirs=['NN','EE'],temp_norm=True,plotMap=False):
-    use_files, use_lsts, use_file_inds = get_hourly_files(uvd,HHfiles,jd)
-    temp = {}
-    ant_dfs = {}
-    for pol in pols:
-        temp[pol] = read_template(pol)
-        ant_dfs[pol] = {}
-    if use_ants == 'auto':
-        use_ants = uvd.get_ants()
-    flaggedAnts = {polDirs[0]: [], polDirs[1]: []}
-    for i,lst in enumerate(use_lsts):
-#         print(lst)
-        hdat = UVData()
-        hdat.read(use_files[i],antenna_nums=use_ants)
-        for p,pol in enumerate(pols):
-            ant_dfs[pol][lst] = {}
-            ranges = np.asarray(temp[pol]['lst_ranges'][0])
-            if len(np.argwhere(ranges[:,0]<lst)) > 0:
-                ind = np.argwhere(ranges[:,0]<lst)[-1][0]
-            else:
-                if p == 0:
-                    print(f'No template for lst={lst} - skipping')
-                continue
-            dat = np.abs(temp[pol][str(ind)])
-            if temp_norm is True:
-                medpower = np.nanmedian(np.log10(np.abs(hdat.data_array)))
-                medtemp = np.nanmedian(dat)
-                norm = np.divide(medpower,medtemp)
-                dat = np.multiply(dat,norm)        
-            for ant in use_ants:
-                d = np.log10(np.abs(hdat.get_data((ant,ant,pol))))
-                d = np.average(d,axis=0)
-                df = np.abs(np.subtract(dat,d))
-                ant_dfs[pol][lst][ant] = np.nanmedian(df)
-            if plotMap is True:
-                fig = plt.figure(figsize=(18,10))
-                cmap = plt.get_cmap('inferno')
-                sm = plt.cm.ScalarMappable(cmap=cmap,norm=plt.Normalize(vmin=0,vmax=1))
-                sm._A = []
-            ampmin=100000000000000
-            ampmax=0
-            for ant in use_ants:
-                amp = ant_dfs[pol][lst][ant]
-                if amp > ampmax: ampmax=amp
-                elif amp < ampmin: ampmin=amp
-            rang = ampmax-ampmin
-            for ant in use_ants:
-                idx = np.argwhere(hdat.antenna_numbers == ant)[0][0]
-                antPos = hdat.antenna_positions[idx]
-                amp = ant_dfs[pol][lst][ant]
-                if math.isnan(amp):
-                    marker="v"
-                    color="r"
-                    markersize=30
-                else:
-                    cind = float((amp-ampmin)/rang)
-                    if plotMap is True:
-                        coloramp = cmap(cind)
-                        color=coloramp
-                        marker="h"
-                        markersize=40
-                if cind > 0.15 and ant not in flaggedAnts[polDirs[p]]:
-                    flaggedAnts[polDirs[p]].append(ant)
-                if plotMap is True:
-                    plt.plot(antPos[1],antPos[2],marker=marker,markersize=markersize,color=color)
-                    if math.isnan(amp) or coloramp[0]>0.6:
-                        plt.text(antPos[1]-3,antPos[2],str(ant),color='black')
-                    else:
-                        plt.text(antPos[1]-3,antPos[2],str(ant),color='white')
-            if plotMap is True:
-                plt.title(f'{polDirs[p]} pol, {lst} hours')
-                cbar = fig.colorbar(sm)
-                cbar.set_ticks([])
-    return ant_dfs, flaggedAnts
-    
 
 def load_data(data_path,JD):
+    """
+    Function to find all data files for a given night and read a small sample file.
+    
+    Parameters:
+    ---------
+    data_path: String
+        Full path to the location of the data files.
+    JD: Int
+        JD of the observation.
+    
+    Returns:
+    ---------
+    HHfiles: List
+        List of all *sum.uvh5 files.
+    difffiles: List
+        List of all *diff.uvh5 files.
+    HHautos: List
+        List of all *.sum.autos.uvh5 files.
+    diffautos: List
+        List of all *.diff.autos.uvh5 files.
+    uvd_xx1: UVData Object
+        UVData object holding data in the xx polarization from one file in the middle of the observation.
+    uvd_yy1: UVData Object
+        UVData object holding data in the yy polarization from one file in the middle of the observation.
+    """
+    
     HHfiles = sorted(glob.glob("{0}/zen.{1}.*.sum.uvh5".format(data_path,JD)))
     difffiles = sorted(glob.glob("{0}/zen.{1}.*.diff.uvh5".format(data_path,JD)))
     HHautos = sorted(glob.glob("{0}/zen.{1}.*.sum.autos.uvh5".format(data_path,JD)))
@@ -215,49 +187,1075 @@ def load_data(data_path,JD):
    
     return HHfiles, difffiles, HHautos, diffautos, uvd_xx1, uvd_yy1
 
-def load_data_ds(data_path,JD):
-    HHfiles = sorted(glob.glob("{0}/zen.{1}.*.sum.uvh5".format(data_path,JD)))
-    difffiles = [HHfile.split('sum')[0]+'diff.uvh5' for HHfile in HHfiles]
-    Nfiles = len(HHfiles)
-    hhfile_bases = map(os.path.basename, HHfiles)
-    hhdifffile_bases = map(os.path.basename, difffiles)
-    sep = '.'
-    x = sep.join(HHfiles[0].split('.')[-4:-2])
-    y = sep.join(HHfiles[-1].split('.')[-4:-2])
-    print(f'{len(HHfiles)} sum files found between JDs {x} and {y}')
-    x = sep.join(difffiles[0].split('.')[-4:-2])
-    y = sep.join(difffiles[-1].split('.')[-4:-2])
-    print(f'{len(difffiles)} diff files found between JDs {x} and {y}')
 
-    # choose one for single-file plots
-    hhfile1 = HHfiles[len(HHfiles)//2]
-    difffile1 = difffiles[len(difffiles)//2]
-    if len(HHfiles) != len(difffiles):
-        print('############################################################')
-        print('######### DIFFERENT NUMBER OF SUM AND DIFF FILES ###########')
-        print('############################################################')
-    # Load data
-    uvd_hh = UVData()
+def detectWrongConnectionAnts(uvd,dtype='load'):
+    """
+    Function to detect antennas that are not producing data we would expect for the given data type. This may include severely broken or dead antennas, and should detect other wrong connections, such as antennas that are observing the sky on nights we are intending to record load data.
+    
+    Parameters:
+    ----------
+    uvd: UVData Object
+        UVData object containing the autospectra for all antennas in the data. A longer time axis will produce more accurate flagging.
+    
+    Returns:
+    ----------
+    wrongAnts: List
+        List of antennas not exhibiting the expected data. These antennas should be excluded from most array-wide analysis, as they may be misleading.
+    """
+    ants = uvd.get_ants()
+    wrongAnts = []
+    for ant in ants:
+        antOk = None
+        for pol in ['xx','yy']:
+            if antOk is False:
+                continue
+            spectrum = uvd.get_data(ant,ant,pol)
+            stdev = np.std(spectrum)
+            med = np.median(np.abs(spectrum))
+            if dtype is 'load' and 80000<stdev<=4000000 and med<=950000:
+                antOk = True
+            elif dtype is 'digitalNoise' and stdev <= 80000:
+                antOk = True
+            elif dtype is 'sky' and stdev > 2000000 and med > 950000:
+                antOk = True
+            else:
+                antOk = False
+            if np.min(np.abs(spectrum)) <100000:
+                antOk = False
+            if antOk is False:
+                wrongAnts.append(ant)
+    return wrongAnts
 
-    unread = True
-    while unread is True:
+
+def generate_nodeDict(uv,pols=['E']):
+    """
+    Generates dictionaries containing node and antenna information.
+    
+    Parameters:
+    ----------
+    uv: UVData Object
+        Sample observation to extract node and antenna information from.
+    pols: List
+        Polarization(s) to include in node dict. To include both polarizations, set to ['E','N']. Default is ['E']. 
+    
+    Returns:
+    -------
+    nodes: Dict
+        Dictionary containing entry for all nodes, each of which has keys: 'ants', 'snapLocs', 'snapInput'.
+    antDict: Dict
+        Dictionary containing entry for all antennas, each of which has keys: 'node', 'snapLocs', 'snapInput'.
+    inclNodes: List
+        Nodes that have hooked up antennas.
+    """
+    
+    antnums = uv.get_ants()
+    h = cm_hookup.Hookup()
+    x = h.get_hookup('HH')
+    nodes = {}
+    antDict = {}
+    inclNodes = []
+    antpolDict = {}
+#     pols = ['E','N']
+    for ant in antnums:
+        for pol in pols:
+            key = 'HH%i:A' % (ant)
+            if x[key].get_part_from_type('node')[f'{pol}<ground'] is None:
+                continue
+            n = x[key].get_part_from_type('node')[f'{pol}<ground'][1:]
+            snapLoc = (x[key].hookup[f'{pol}<ground'][-1].downstream_input_port[-1], ant)
+            snapInput = (x[key].hookup[f'{pol}<ground'][-2].downstream_input_port[1:], ant)
+            if len(pols)==1:
+                antpolKey = ant
+                snapLocKey = snapLoc
+            else:
+                antpolKey = f'{ant}{pol}'
+                snapLocKey = (snapLoc[0],f'{snapLoc[1]}{pol}')
+            antDict[antpolKey] = {}
+            antDict[antpolKey]['node'] = str(n)
+            antDict[antpolKey]['snapLocs'] = snapLocKey
+            antDict[antpolKey]['snapInput'] = snapInput
+            inclNodes.append(n)
+            if n in nodes:
+                nodes[n]['ants'].append(antpolKey)
+                nodes[n]['snapLocs'].append(snapLocKey)
+                nodes[n]['snapInput'].append(snapInput)
+            else:
+                nodes[n] = {}
+                nodes[n]['ants'] = [antpolKey]
+                nodes[n]['snapLocs'] = [snapLocKey]
+                nodes[n]['snapInput'] = [snapInput]
+    inclNodes = np.unique(inclNodes)
+    return nodes, antDict, inclNodes
+
+
+def sort_antennas(uv,use_ants='all',pols=['E']):
+    """
+    Helper function that sorts antennas by snap input number.
+    
+    Parameters:
+    ----------
+    uv: UVData Object
+        Sample observation used for extracting node and antenna information.
+    use_ants: List or 'all'
+        Set of antennas to use and sort. Either specified by a list, or set to 'all' to use all antennas. Default is 'all'.
+    pols: List
+        Set of pols to include in sorting. Standard use is a single pol, and for the typical configuration it should not affect the sorted order whether the specified polarization is 'N' or 'E'. If set to ['E','N'], all antpols will be individually sorted and included in the resulting list.
+        
+    Returns:
+    -------
+    sortedAntennas: List
+        All antennas specified by use_ants parameter, sorted into order of ascending node number, and within that by ascending snap number, and within that by ascending snap input number.
+    sortedSnapLocs: List
+        List of all SNAPs with an associated antenna specified by the use_ants parameter, sorted by node and within that by SNAP number.
+    sortedSnapInputs: List
+        List of all SNAP inputs with an associated antenna specified by the use_ants parameter, sorted by node and within that by SNAP number, within that by SNAP input number.
+    """
+    
+    nodes, antDict, inclNodes = generate_nodeDict(uv,pols)
+    sortedAntennas = []
+    sortedSnapLocs = []
+    sortedSnapInputs = []
+    for n in sorted(inclNodes):
+        snappairs = []
+        h = cm_hookup.Hookup()
+        x = h.get_hookup('HH')
+        for ant in nodes[n]['ants']:
+            if len(pols)==2:
+                antnum = ant[0:-1]
+            else:
+                antnum = ant
+            if use_ants!='all' and int(antnum) not in use_ants and ant not in use_ants:
+                continue
+            for pol in pols:
+                snappairs.append(antDict[ant]['snapLocs'])
+        snapLocs = {}
+        locs = []
+        for pair in snappairs:
+            ant = pair[1]
+            loc = pair[0]
+            locs.append(loc)
+            if loc in snapLocs:
+                snapLocs[loc].append(ant)
+            else:
+                snapLocs[loc] = [ant]
+        locs = sorted(np.unique(locs))
+        ants_sorted = []
+        for loc in locs:
+            ants = snapLocs[loc]
+            inputpairs = []
+            for ant in ants:
+                if len(pols)==2:
+                    key = 'HH%s:A' % (ant[:-1])
+                    pol = ant[-1]
+                else:
+                    key = 'HH%i:A' % (ant)
+                    pol = pols[0]
+                pair = (int(x[key].hookup[f'{pol}<ground'][-2].downstream_input_port[1:]), ant)
+                inputpairs.append(pair)
+            for _,a in sorted(inputpairs):
+                ants_sorted.append(a)
+        for ant in ants_sorted:
+            if ant not in sortedAntennas:
+                sortedAntennas.append(ant)
+                loc = antDict[ant]['snapLocs'][0]
+                i = antDict[ant]['snapInput'][0]
+                sortedSnapLocs.append(int(loc))
+                sortedSnapInputs.append(int(i))
+    return sortedAntennas, sortedSnapLocs, sortedSnapInputs
+
+
+def get_hourly_files(uv, HHfiles, jd):
+    """
+    Generates a list of files spaced one hour apart throughout a night of observation, and the times those files were observed.
+    
+    Parameters:
+    ----------
+    uv: UVData Object
+        Sample observation from the given night, used only for grabbing the telescope location
+    HHFiles: List
+        List of all files from the desired night of observation
+    jd: String
+        JD of the night of observation
+        
+    Returns:
+    -------
+    use_files: List
+        List of files separated by one hour
+    use_lsts: List
+        List of LSTs of observations in use_files
+    use_file_inds: List
+        List of indices corresponding to the location of the files in use_files in HHfiles.
+    """
+    use_lsts = []
+    use_files = []
+    use_file_inds = []
+    loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
+    for i,file in enumerate(HHfiles):
         try:
-            uvd_hh.read(hhfile1, skip_bad_files=True)
-        except:
-            hhfile += 1
+            dat = UVData()
+            dat.read(file, read_data=False)
+        except KeyError:
             continue
-        unread = False
-    uvd_xx1 = uvd_hh.select(polarizations = -5, inplace = False)
-    uvd_xx1.ants = np.unique(np.concatenate([uvd_xx1.ant_1_array, uvd_xx1.ant_2_array]))
-    # -5: 'xx', -6: 'yy', -7: 'xy', -8: 'yx'
+        jd = dat.time_array[0]
+        t = Time(jd,format='jd',location=loc)
+        lst = round(t.sidereal_time('mean').hour,2)
+        if np.round(lst,0) == 24:
+            continue
+        if np.abs((lst-np.round(lst,0)))<0.05:
+            if len(use_lsts)>0 and np.abs(use_lsts[-1]-lst)<0.5:
+                if np.abs((lst-np.round(lst,0))) < abs((use_lsts[-1]-np.round(lst,0))):
+                    use_lsts[-1] = lst
+                    use_files[-1] = file
+                    use_file_inds[-1] = i
+            else:
+                use_lsts.append(lst)
+                use_files.append(file)
+                use_file_inds.append(i)
+    return use_files, use_lsts, use_file_inds
 
-    uvd_yy1 = uvd_hh.select(polarizations = -6, inplace = False)
-    uvd_yy1.ants = np.unique(np.concatenate([uvd_yy1.ant_1_array, uvd_yy1.ant_2_array]))
+def get_baseline_groups(uv, bl_groups=[(14,0,'14m E-W'),(29,0,'29m E-W'),(14,-11,'14m NW-SE'),(14,11,'14m SW-NE')],
+                       use_ants='all'):
+    """
+    Generate dictionary containing baseline groups.
+    
+    Parameters:
+    ----------
+    uv: UVData Object
+        Observation to extract antenna position information from
+    bl_groups: List
+        Desired baseline types to extract, formatted as (length (float), N-S separation (float), label (string))
+    use_ants: List or 'all'
+        List of antennas to use, or set to 'all' to use all antennas.
+        
+    Returns:
+    --------
+    bls: Dict
+        Dictionary containing list of lists of redundant baseline numbers, formatted as bls[group label]
+    """
+    
+    bls={}
+    baseline_groups,vec_bin_centers,lengths = uv.get_redundancies(use_antpos=False,include_autos=False)
+    for i in range(len(baseline_groups)):
+        bl = baseline_groups[i]
+        for group in bl_groups:
+            if np.abs(lengths[i]-group[0])<1:
+                ant1 = uv.baseline_to_antnums(bl[0])[0]
+                ant2 = uv.baseline_to_antnums(bl[0])[1]
+                if use_ants == 'all' or (ant1 in use_ants and ant2 in use_ants):
+                    antPos1 = uv.antenna_positions[np.argwhere(uv.antenna_numbers == ant1)]
+                    antPos2 = uv.antenna_positions[np.argwhere(uv.antenna_numbers == ant2)]
+                    disp = (antPos2-antPos1)[0][0]
+                    if np.abs(disp[2]-group[1])<0.5:
+                        bls[group[2]] = bl
+    return bls
 
-   
-    return HHfiles, difffiles, uvd_xx1, uvd_yy1
+
+def get_baseline_type(uv,bl_type=(14,0,'14m E-W'),use_ants='auto'):
+    """
+    Parameters:
+    ----------
+    uv: UVData Object
+        Sample observation to get baseline information from.
+    bl_type: Tuple
+        Redundant baseline group to extract baseline numbers for. Formatted as (length, N-S separation, label).
+    use_ants: List or 'all'
+        List of antennas to use, or set to 'all' to use all antennas.
+    
+    Returns:
+    -------
+    bl: List
+        List of lists of redundant baseline numbers. Returns None if the provided bl_type is not found.
+    """
+    
+    baseline_groups,vec_bin_centers,lengths = uv.get_redundancies(use_antpos=False,include_autos=False)
+    for i in range(len(baseline_groups)):
+        bl = baseline_groups[i]
+        if np.abs(lengths[i]-bl_type[0])<1:
+            ant1 = uv.baseline_to_antnums(bl[0])[0]
+            ant2 = uv.baseline_to_antnums(bl[0])[1]
+            if (ant1 in use_ants and ant2 in use_ants) or use_ants == 'auto':
+                antPos1 = uv.antenna_positions[np.argwhere(uv.antenna_numbers == ant1)]
+                antPos2 = uv.antenna_positions[np.argwhere(uv.antenna_numbers == ant2)]
+                disp = (antPos2-antPos1)[0][0]
+                if np.abs(disp[2]-bl_type[1])<0.5:
+                    return bl
+    return None
+
+
+def generateDataTable(uv,pols=['xx','yy']):
+    """
+    Simple helper function to generate an empty dictionary of the format desired for get_correlation_baseline_evolutions()
+    
+    Parameters:
+    ----------
+    uv: UVData Object
+        Sample observation to extract node and antenna information from.
+    pols: List
+        Polarizations to plot. Can include any polarization strings accepted by pyuvdata. Default is ['xx','yy'].
+        
+    Returns:
+    -------
+    dataObject: Dict
+        Empty dict formatted as dataObject[node #][polarization]['inter' or 'intra']
+    """
+    
+    nodeDict, antDict, inclNodes = generate_nodeDict(uv)
+    dataObject = {}
+    for node in nodeDict:
+        dataObject[node] = {}
+        for pol in pols:
+            dataObject[node][pol] = {
+                'inter' : [],
+                'intra' : []
+            }
+    return dataObject
+
+
+def gather_source_list():
+    """
+    Helper function to gather a source list to use in plot_sky_map. 
+    
+    Parameters:
+    ---------
+    None
+    
+    Returns:
+    ---------
+    sources: List
+        List of tuples representing radio sources, formatted as (RA, DEC, Source Name).
+    """
+    sources = []
+    sources.append((50.6750,-37.2083,'Fornax A'))
+    sources.append((201.3667,-43.0192,'Cen A'))
+    # sources.append((83.6333,22.0144,'Taurus A'))
+    sources.append((252.7833,4.9925,'Hercules A'))
+    sources.append((139.5250,-12.0947,'Hydra A'))
+    sources.append((79.9583,-45.7789,'Pictor A'))
+    sources.append((187.7042,12.3911,'Virgo A'))
+    sources.append((83.8208,-59.3897,'Orion A'))
+    sources.append((80.8958,-69.7561,'LMC'))
+    sources.append((13.1875,-72.8286,'SMC'))
+    sources.append((201.3667,-43.0192,'Cen A'))
+    sources.append((83.6333,20.0144,'Crab Pulsar'))
+    sources.append((128.8375,-45.1764,'Vela SNR'))
+    cat_path = f'{DATA_PATH}/G4Jy_catalog.tsv'
+    cat = open(cat_path)
+    f = csv.reader(cat,delimiter='\n')
+    for row in f:
+        if len(row)>0 and row[0][0]=='J':
+            s = row[0].split(';')
+            tup = (float(s[1]),float(s[2]),'')
+            sources.append(tup)
+    return sources
+
+#####################################################################################################################
+############################################## AUTOS PLOTTING FUNCTIONS #############################################
+#####################################################################################################################
+
+def plot_autos(uvdx, uvdy, wrongAnts=[], ylim = [55, 80],logscale=True,savefig=False,title=''):
+    """
+    Function to plot autospectra of all antennas, with a row for each node, sorted by SNAP and within that by SNAP input. Spectra are chosen from a time in the middle of the observation.
+    
+    Parameters:
+    ---------
+    uvdx: UVData Object
+        Data for the XX polarization.
+    uvdy: UVData Object
+        Data for the YY polarization.
+    wrongAnts: List
+        Optional, list of antennas that are identified as observing the wrong datatype (seeing the sky when we are trying to observe load, for example) or are severely broken/dead. These antennas will be greyed out and outlined in red.
+    ylim: List
+        The boundaries of the y-axis, formatted as [minimum value, maximum value].
+    logscale:
+        Option to plot the data on a logarithmic scale. Default is True.
+    savefig: Boolean
+        Option to write out the figure.
+    title: String
+        Path to full figure name, required if savefig is True.
+        
+    """
+    nodes, antDict, inclNodes = generate_nodeDict(uvdx)
+    ants = uvdx.get_ants()
+    sorted_ants, sortedSnapLocs, sortedSnapInputs = sort_antennas(uvdx)
+    freqs = (uvdx.freq_array[0])*10**(-6)
+    times = uvdx.time_array
+    lsts = uvdx.lst_array  
+    maxants = 0
+    for node in nodes:
+        n = len(nodes[node]['ants'])
+        if n>maxants:
+            maxants = n
+    
+    Nants = len(ants)
+    Nside = maxants
+    Yside = len(inclNodes)
+    
+    t_index = 0
+    jd = times[t_index]
+    utc = Time(jd, format='jd').datetime
+    
+    h = cm_active.ActiveData(at_date=jd)
+    h.load_apriori()
+
+    xlim = (np.min(freqs), np.max(freqs))
+    
+
+    fig, axes = plt.subplots(Yside, Nside, figsize=(16,Yside*3))
+
+    ptitle = 1.92/(Yside*3)
+    fig.suptitle("JD = {0}, time = {1} UTC".format(jd, utc), fontsize=10,y=1+ptitle)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.subplots_adjust(left=.1, bottom=.1, right=.9, top=1, wspace=0.05, hspace=0.3)
+    k = 0
+    for i,n in enumerate(inclNodes):
+        ants = nodes[n]['ants']
+        j = 0
+        for _,a in enumerate(sorted_ants):
+            if a not in ants:
+                continue
+            status = h.apriori[f'HH{a}:A'].status
+            ax = axes[i,j]
+            ax.set_xlim(xlim)
+            ax.set_ylim(ylim)
+            if logscale is True:
+                px, = ax.plot(freqs, 10*np.log10(np.abs(uvdx.get_data((a, a))[t_index])), color='r', alpha=0.75, linewidth=1)
+                py, = ax.plot(freqs, 10*np.log10(np.abs(uvdy.get_data((a, a))[t_index])), color='b', alpha=0.75, linewidth=1)
+            else:
+                px, = ax.plot(freqs, np.abs(uvdx.get_data((a, a))[t_index]), color='r', alpha=0.75, linewidth=1)
+                py, = ax.plot(freqs, np.abs(uvdy.get_data((a, a))[t_index]), color='b', alpha=0.75, linewidth=1)
+            ax.grid(False, which='both')
+            abb = status_abbreviations[status]
+            if a in wrongAnts:
+                ax.set_title(f'{a} ({abb})', fontsize=10,backgroundcolor='red')
+            else:
+                ax.set_title(f'{a} ({abb})', fontsize=10,backgroundcolor=status_colors[status])
+            if k == 0:
+                ax.legend([px, py], ['NN', 'EE'])
+            if i == len(inclNodes)-1:
+                [t.set_fontsize(10) for t in ax.get_xticklabels()]
+                ax.set_xlabel('freq (MHz)', fontsize=10)
+            else:
+                ax.set_xticklabels([])
+            if j!=0:
+                ax.set_yticklabels([])
+            else:
+                [t.set_fontsize(10) for t in ax.get_yticklabels()]
+                ax.set_ylabel(r'$10\cdot\log$(amp)', fontsize=10)
+            if a in wrongAnts:
+                for axis in ['top','bottom','left','right']:
+                    ax.spines[axis].set_linewidth(2)
+                    ax.spines[axis].set_color('red')
+                    ax.set_facecolor('black')
+                    ax.patch.set_alpha(0.2)
+            j += 1
+            k += 1
+        for k in range(j,maxants):
+            axes[i,k].axis('off')
+        axes[i,maxants-1].annotate(f'Node {n}', (1.1,.3),xycoords='axes fraction',rotation=270)
+    
+    if savefig is True:
+        plt.savefig(title)
+        plt.show()
+    else:
+        plt.show()
+        plt.close()
+    
+
+def plot_wfs(uvd, pol, mean_sub=False, savefig=False, vmin=6.5, vmax=8, vminSub=-0.07,
+             vmaxSub=0.07, wrongAnts=[], logscale=True,uvd_diff=None,metric=None,title='',dtype=None):
+    """
+    Function to plot auto waterfalls of all antennas, with a row for each node, sorted by SNAP and within that by SNAP input.
+    
+    Parameters
+    ---------
+    uvd: UVData Object
+        UVData object containing all sum data to plot.
+    pol: String
+        Polarization to plot. Can be any polarization string accepted by pyuvdata.
+    mean_sub: Boolean
+        Option to plot mean-subtracted waterfalls, where the average spectrum over the night is subtracted out.
+    savefig: Boolean
+        Option to write out the figure
+    vmin: float
+        Colorbar minimum value when mean_sub is False.
+    Vmax: float
+        Colorbar maximum value when mean_sub is False.
+    vminSub: float
+        Colorbar minimum value when mean_sub is True
+    vmaxSub: float
+        Colorbar maximum value when mean_sub is True.
+    wrongAnts: List
+        Optional, list of antennas that are identified as observing the wrong datatype (seeing the sky when we are trying to observe load, for example) or are severely broken/dead. These antennas will be greyed out and outlined in red.
+    logscale: Boolean
+        Option to use a logarithmic colorbar.
+    uvd_diff: UVData Object
+        Diff data corresponding to the sum data in uvd. Required when metric is set.
+    metric: String or None
+        When metric is None the standard sum data is plot. Set metric to 'even' or 'odd' to plot those values instead. Providing uvd_diff is required when this parameter is used.
+    title: String
+        Path to write out the figure if savefig is True.
+    dtype: String or None
+        Can be 'sky', 'load', 'noise', or None. If set to 'load' or 'noise' the vmin and vmax parameters will be automatically changed to better suit those datatypes. If you want to manually set vmin and vmax, set this parameter to None.
+        
+    Returns:
+    -------
+    None
+    
+    """
+    amps = np.abs(uvd.data_array[:, :, :, pol].reshape(uvd.Ntimes, uvd.Nants_data, uvd.Nfreqs, 1))
+    nodes, antDict, inclNodes = generate_nodeDict(uvd)
+    ants = uvd.get_ants()
+    sorted_ants, sortedSnapLocs, sortedSnapInputs = sort_antennas(uvd)
+    freqs = (uvd.freq_array[0])*10**(-6)
+    times = uvd.time_array
+    lsts = uvd.lst_array*3.819719
+    inds = np.unique(lsts,return_index=True)[1]
+    lsts = [lsts[ind] for ind in sorted(inds)]
+    maxants = 0
+    polnames = ['xx','yy']
+    if dtype is 'load':
+        vmin = 5.5
+        vmax = 7.5
+    elif dtype is 'digitalNoise':
+        vmin=7.8055
+        vmax=7.8075
+    for node in nodes:
+        n = len(nodes[node]['ants'])
+        if n>maxants:
+            maxants = n
+    
+    Nants = len(ants)
+    Nside = maxants
+    Yside = len(inclNodes)
+    
+    t_index = 0
+    jd = times[t_index]
+    utc = Time(jd, format='jd').datetime
+    
+    h = cm_active.ActiveData(at_date=jd)
+    h.load_apriori()
+    ptitle = 1.92/(Yside*3)
+    fig, axes = plt.subplots(Yside, Nside, figsize=(16,Yside*3))
+    if metric is None:
+        suffix = ''
+    else:
+        suffix = metric
+    if pol == 0:
+        fig.suptitle(f"North Polarization - {metric}", fontsize=14, y=1+ptitle)
+    else:
+        fig.suptitle(f"East Polarization - {metric}", fontsize=14, y=1+ptitle)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.subplots_adjust(left=0, bottom=.1, right=.9, top=1, wspace=0.1, hspace=0.3)
+
+    for i,n in enumerate(inclNodes):
+        ants = nodes[n]['ants']
+        j = 0
+        for _,a in enumerate(sorted_ants):
+            if a not in ants:
+                continue
+            status = h.apriori[f'HH{a}:A'].status
+            abb = status_abbreviations[status]
+            ax = axes[i,j]
+            if metric is None:
+                if logscale is True:
+                    dat = np.log10(np.abs(uvd.get_data(a,a,polnames[pol])))
+                else:
+                    dat = np.abs(uvd.get_data(a,a,polnames[pol]))
+            else:
+                dat_diff = uvd_diff.get_data(a,a,polnames[pol])
+                dat = uvd.get_data(a,a,polnames[pol])
+                if metric is 'even':
+                    dat = (dat + dat_diff)/2
+                elif metric is 'odd':
+                    dat = (dat - dat_diff)/2
+                if logscale is True:
+                    dat = np.log10(np.abs(dat))
+            if mean_sub == True:
+                ms = np.subtract(dat, np.nanmean(dat,axis=0))
+                im = ax.imshow(ms, 
+                           vmin = vminSub, vmax = vmaxSub, aspect='auto',interpolation='nearest')
+            else:
+                im = ax.imshow(dat, 
+                               vmin = vmin, vmax = vmax, aspect='auto',interpolation='nearest')
+            if a in wrongAnts:
+                ax.set_title(f'{a} ({abb})', fontsize=10,backgroundcolor='red')
+            else:
+                ax.set_title(f'{a} ({abb})', fontsize=10,backgroundcolor=status_colors[status])
+            if i == len(inclNodes)-1:
+                xticks = [int(i) for i in np.linspace(0,len(freqs)-1,3)]
+                xticklabels = np.around(freqs[xticks],0)
+                ax.set_xticks(xticks)
+                ax.set_xticklabels(xticklabels)
+                ax.set_xlabel('Freq (MHz)', fontsize=10)
+                [t.set_rotation(70) for t in ax.get_xticklabels()]
+            else:
+                ax.set_xticklabels([])
+            if j != 0:
+                ax.set_yticklabels([])
+            else:
+                yticks = [int(i) for i in np.linspace(0,len(lsts)-1,6)]
+                yticklabels = [np.around(lsts[ytick],1) for ytick in yticks]
+                [t.set_fontsize(12) for t in ax.get_yticklabels()]
+                ax.set_ylabel('Time(LST)', fontsize=10)
+                ax.set_yticks(yticks)
+                ax.set_yticklabels(yticklabels)
+                ax.set_ylabel('Time(LST)', fontsize=10)
+            if a in wrongAnts:
+                for axis in ['top','bottom','left','right']:
+                    ax.spines[axis].set_linewidth(2)
+                    ax.spines[axis].set_color('red')
+            j += 1
+        for k in range(j,maxants):
+            axes[i,k].axis('off')
+        pos = ax.get_position()
+        cbar_ax=fig.add_axes([0.91,pos.y0,0.01,pos.height])        
+        cbar = fig.colorbar(im, cax=cbar_ax)
+        cbar.set_label(f'Node {n}',rotation=270, labelpad=15)
+    if savefig is True:
+        plt.savefig(title,bbox_inches='tight',dpi=100)
+    plt.show()
+    plt.close()
+
+
+def auto_waterfall_lineplot(uv, ant, jd, vmin=1e6, vmax=1e8, title=''):
+    """
+    Function to plot an auto waterfall, with two lineplots underneath: one single spectrum from the middle of the observation, and one spectrum that is the average over the night.
+    
+    Parameters:
+    ---------
+    uv: UVData Object
+        Observation data.
+    ant: Int
+        Antenna number to plot, must be in the provided uv object.
+    jd: Int
+        JD of the observation.
+    vmin: Int
+        Colorbar minimum value.
+    vmax: Int
+        Colorbar maximum value.
+    title: String
+        Plot title.
+        
+    Returns:
+    -------
+    None
+    
+    """
+    h = cm_active.ActiveData(at_date=jd)
+    h.load_apriori()
+    status = h.apriori[f'HH{ant}:A'].status
+    freq = uv.freq_array[0]*1e-6
+    fig = plt.figure(figsize=(12,8))
+    gs = gridspec.GridSpec(3, 2, height_ratios=[2,0.7,1])
+    it = 0
+    pols=['xx','yy'],
+    pol_dirs = ['NN','EE']
+    for p,pol in enumerate(pols):
+        waterfall= plt.subplot(gs[it])
+        jd_ax=plt.gca()
+        times= np.unique(uv.time_array)
+        d = np.abs(uv.get_data((ant,ant, pol)))
+        if len(np.nonzero(d)[0])==0:
+            print('#########################################')
+            print(f'Data for antenna {ant} is entirely zeros')
+            print('#########################################')
+            plt.close()
+            return
+        im = plt.imshow(d,norm=colors.LogNorm(),aspect='auto',vmin=vmin,vmax=vmax)
+        abb = status_abbreviations[status]
+        waterfall.set_title(f'{pol_dirs[p]} pol')
+        freqs = uv.freq_array[0, :] / 1000000
+        xticks = np.arange(0, len(freqs), 120)
+        plt.xticks(xticks, labels =np.around(freqs[xticks],2))
+        if p == 0:
+            jd_ax.set_ylabel('JD')
+            jd_yticks = [int(i) for i in np.linspace(0,len(times)-1,8)]
+            jd_labels = np.around(times[jd_yticks],2)
+            jd_ax.set_yticks(jd_yticks)
+            jd_ax.set_yticklabels(jd_labels)
+            jd_ax.autoscale(False)
+        if p == 1:
+            lst_ax = jd_ax.twinx()
+            lst_ax.set_ylabel('LST (hours)')
+            lsts = uv.lst_array*3.819719
+            inds = np.unique(lsts,return_index=True)[1]
+            lsts = [lsts[ind] for ind in sorted(inds)]
+            lst_yticks = [int(i) for i in np.linspace(0,len(lsts)-1,8)]
+            lst_labels = np.around([lsts[i] for i in lst_yticks],2)
+            lst_ax.set_yticks(lst_yticks)
+            lst_ax.set_yticklabels(lst_labels)
+            lst_ax.set_ylim(jd_ax.get_ylim())
+            lst_ax.autoscale(False)
+            jd_ax.set_yticks([])
+        line= plt.subplot(gs[it+2])
+        averaged_data= np.abs(np.average(uv.get_data((ant,ant,pol)),0))
+        plt.plot(freq,averaged_data)
+        line.set_yscale('log')
+        if p == 0:
+            line.set_ylabel('Night Average')
+        else:
+            line.set_yticks([])
+        line.set_xlim(freq[0],freq[-1])
+        line.set_xticks([])
+        
+        line2 = plt.subplot(gs[it+4])
+        dat = uv.get_data((ant,ant,pol))
+        dat = np.abs(dat[len(dat)//2,:])
+        plt.plot(freq,dat)
+        line2.set_yscale('log')
+        line2.set_xlabel('Frequency (MHz)')
+        if p == 0:
+            line2.set_ylabel('Single Slice')
+        else:
+            line2.set_yticks([])
+        line2.set_xlim(freq[0],freq[-1])
+        
+        plt.setp(waterfall.get_xticklabels(), visible=False)
+        plt.subplots_adjust(hspace=.0)
+        cbar = plt.colorbar(im, pad= 0.2, orientation = 'horizontal')
+        cbar.set_label('Power')
+        it=1
+    fig.suptitle(f'{ant} ({abb})', fontsize=10, backgroundcolor=status_colors[status],y=0.96)
+    plt.annotate(title, xy=(0.5,0.94), ha='center',xycoords='figure fraction')
+    plt.show()
+    plt.close()
+
+#####################################################################################################################
+############################################### CORRELATION FUNCTIONS ###############################################
+#####################################################################################################################
+
+def plotNodeAveragedSummary(uv,HHfiles,jd,use_ants,pols=['xx','yy'],
+                            baseline_groups=[],removeBadAnts=False,plotRatios=False,plotSummary=True):
+    """
+    Plots correlation matrices for 3 separate times throughout the night, as well as a summary of baseline correlations throughout a night for each baseline group specified, separated into inter-node and intra-node baselines, for each polarization specified.
+    
+    Parameters
+    ----------
+    uv: UVData object
+        UVData object containing any file from the desired night of observation.
+    HHfiles: List
+        A list of all files to be looked at for the desired night of observation.
+    jd: String
+        The JD of the night of observation
+    use_ants: List
+        Set of antennas to include.
+    pols: List
+        A list containing the desired polarizations to look at. Options are any polarization strings accepted by pyuvdata. 
+    baseline_groups: []
+        A list containing the baseline types to look at, formatted as (length, N-S separation, label (str)).
+    removeBadAnts: Bool
+        Option to flag seemingly dead antennas and remove them from the per-baseline-group averaging.
+    plotRatios: Boolean
+        Option to plot the differences between polarization combinations in each of the four panels, rather than the polarizations themselves. If chosen, the four pannels will be 'xx-xy', 'xx-yx', 'yy-xy', 'yy-yx'. This option is useful for identifying cross-polarized antennas.
+    plotSummary: Boolean
+        Option to plot a baseline length summary of the correlation metric in addition to the matrices.
+    
+    Returns
+    -------
+    badAnts: List
+        A list specifying the antennas flagged as dead or non-correlating.
+    """
+    if baseline_groups == []:
+        baseline_groups = [(14,0,'14m E-W'),(14,-11,'14m NW-SE'),(14,11,'14m SW-NE'),(29,0,'29m E-W'),(29,22,'29m SW-NE'),
+                       (44,0,'44m E-W'),(58.5,0,'58m E-W'),(73,0,'73m E-W'),(87.6,0,'88m E-W'),
+                      (102.3,0,'102m E-W')]
+    nodeMedians,lsts,badAnts=get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants,pols=pols,
+                                                                bl_type=baseline_groups,removeBadAnts=removeBadAnts,
+                                                                plotRatios=plotRatios)
+    if plotSummary is False:
+        return badAnts
+    if len(lsts)>1:
+        fig,axs = plt.subplots(len(pols),2,figsize=(16,16))
+        maxLength = 0
+        cmap = plt.get_cmap('Blues')
+        for group in baseline_groups:
+            if group[0] > maxLength:
+                maxLength = group[0]
+        for group in baseline_groups:
+            length = group[0]
+            data = nodeMedians[group[2]]
+            colorInd = float(length/maxLength)
+            if len(data['inter']['xx']) == 0:
+                continue
+            for i in range(len(pols)):
+                pol = pols[i]
+                axs[i][0].plot(data['inter'][pol], color=cmap(colorInd), label=group[2])
+                axs[i][1].plot(data['intra'][pol], color=cmap(colorInd), label=group[2])
+                axs[i][0].set_ylabel('Median Correlation Metric')
+                axs[i][0].set_title('Internode, Polarization %s' % pol)
+                axs[i][1].set_title('Intranode, Polarization %s' % pol)
+                xticks = np.arange(0,len(lsts),1)
+                axs[i][0].set_xticks(xticks)
+                axs[i][0].set_xticklabels([str(lst) for lst in lsts])
+                axs[i][1].set_xticks(xticks)
+                axs[i][1].set_xticklabels([str(lst) for lst in lsts])
+        axs[1][1].legend()
+        axs[1][0].set_xlabel('LST (hours)')
+        axs[1][1].set_xlabel('LST (hours)')
+        fig.tight_layout()
+    else:
+        print('#############################################################################')
+        print('Not enough LST coverage to show metric evolution - that plot is being skipped')
+        print('#############################################################################')
+    return badAnts,nodeMedians,lsts
+
+
+def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='all',badThresh=0.35,pols=['xx','yy','xy','yx'],bl_type=(14,0,'14m E-W'),
+                                        removeBadAnts=False, plotMatrix=True,plotRatios=False):
+    """
+    Calculates the average correlation metric for a set of redundant baseline groups at one hour intervals throughout a night of observation.
+    
+    Parameters:
+    ----------
+    uv: UVData Object
+        Sample observation from the desired night, used only for getting telescope location information.
+    HHfiles: List
+        List of all files for a night of observation
+    jd: String
+        JD of the given night of observation
+    use_ants: List or 'all'
+        List of antennas to include, or set to 'all' to include all antennas.
+    badThresh: Float
+        Threshold correlation metric value to use for flagging bad antennas. Default is 0.35.
+    pols: List
+        Polarizations to plot. Can include any polarization strings accepted by pyuvdata.
+    bl_type: Tuple
+        Redundant baseline group to calculate correlation metric for. Default is 14m E-W baselines
+    removeBadAnts: Bool
+        Option to exclude antennas marked as bad from calculation. Default is False.
+    plotMatrix: Bool
+        Option to plot the correlation matrix for observations once each hour. Default is True.
+    plotRatios: Boolean
+        Option to plot the differences between polarization combinations in each of the four panels, rather than the polarizations themselves. If chosen, the four pannels will be 'xx-xy', 'xx-yx', 'yy-xy', 'yy-yx'. This option is useful for identifying cross-polarized antennas.
+        
+    Returns:
+    -------
+    result: Dict
+        Per hour correlation metric, formatted as result[baseline type]['inter' or 'intra'][polarization]
+    lsts: List
+        LSTs that metric was calculated for, spaced 1 hour apart.
+    bad_antennas: List
+        Antenna numbers flagged as bad based on badThresh parameter.
+    """
+    files, lsts, inds = get_hourly_files(uv, HHfiles, jd)
+    if use_ants == 'all':
+        use_ants = uv.get_ants()
+    if plotRatios is True:
+        files = [files[len(files)//2]]
+        nTimes=1
+    else:
+        nTimes = len(files)
+    if nTimes > 3:
+        plotTimes = [0,nTimes//2,nTimes-1]
+    else:
+        plotTimes = np.arange(0,nTimes,1)
+    nodeDict, antDict, inclNodes = generate_nodeDict(uv)
+    JD = math.floor(uv.time_array[0])
+    bad_antennas = []
+    corrSummary = generateDataTable(uv,pols=pols)
+    result = {}
+    for f in range(nTimes):
+        file = files[f]
+        ind = inds[f]
+        sm = UVData()
+        df = UVData()
+        try:
+#             print(f'Trying to read {file}')
+            sm.read(file, skip_bad_files=True, antenna_nums=use_ants)
+            dffile = '%sdiff%s' % (file[0:-8],file[-5:])
+            df.read(dffile, skip_bad_files=True, antenna_nums=use_ants)
+        except:
+            i = -5
+            read = False
+            while i<5 and read==False:
+                try:
+                    file = HHfiles[ind+i]
+#                     print(f'trying to read {file}')
+                    sm.read(file, skip_bad_files=True, antenna_nums=use_ants)
+                    dffile = '%sdiff%s' % (file[0:-8],file[-5:])
+                    df.read(dffile, skip_bad_files=True, antenna_nums=use_ants)
+                    read = True
+                except:
+                    i += 1
+            if read == False:
+                print(f'WARNING: unable to read {file}')
+                continue
+        matrix, badAnts = calcEvenOddAmpMatrix(sm,df,nodes='auto',pols=pols,badThresh=badThresh,plotRatios=plotRatios)
+        bad_antennas=badAnts
+        if plotMatrix is True and f in plotTimes:
+            plotCorrMatrix(sm, matrix, pols=pols, nodes='auto',plotRatios=plotRatios)
+        for group in bl_type:
+            medians = {
+                'inter' : {},
+                'intra' : {}
+                }
+            for pol in pols:
+                medians['inter'][pol] = []
+                medians['intra'][pol] = []
+            if group[2] not in result.keys():
+                result[group[2]] = {
+                    'inter' : {},
+                    'intra' : {}
+                }
+                for pol in pols:
+                    result[group[2]]['inter'][pol] = []
+                    result[group[2]]['intra'][pol] = []
+            bls = get_baseline_type(uv,bl_type=group,use_ants=use_ants)
+            bls = get_baseline_groups(sm,bl_type)
+            bls = bls[group[2]]
+            if bls == None:
+                print(f'No baselines of type {group}')
+                continue
+            baselines = [uv.baseline_to_antnums(bl) for bl in bls]
+            if removeBadAnts is True:
+                nodeInfo = {
+                    'inter' : getInternodeMedians(sm,matrix,badAnts=bad_antennas, baselines=baselines,pols=pols),
+                    'intra' : getIntranodeMedians(sm,matrix,badAnts=bad_antennas, baselines=baselines,pols=pols)
+                }
+            else:
+                nodeInfo = {
+                    'inter' : getInternodeMedians(sm,matrix, baselines=baselines,pols=pols),
+                    'intra' : getIntranodeMedians(sm,matrix,baselines=baselines,pols=pols)
+                }
+            for node in nodeDict:
+                for pol in pols:
+                    corrSummary[node][pol]['inter'].append(nodeInfo['inter'][node][pol])
+                    corrSummary[node][pol]['intra'].append(nodeInfo['intra'][node][pol])
+                    medians['inter'][pol].append(nodeInfo['inter'][node][pol])
+                    medians['intra'][pol].append(nodeInfo['intra'][node][pol])
+            for pol in pols:
+                result[group[2]]['inter'][pol].append(np.nanmedian(medians['inter'][pol]))
+                result[group[2]]['intra'][pol].append(np.nanmedian(medians['intra'][pol]))
+    return result,lsts,bad_antennas
+
+
+def getInternodeMedians(uv,data,pols=['xx','yy'],badAnts=[],baselines='all'):
+    """
+    Identifies internode baseliens and performs averaging of correlation metric.
+    
+    Parameters:
+    ----------
+    uv: UVData Object
+        Sample observation to extract node and antenna information from.
+    data: Dict
+        Dictionary containing correlation metric information, formatted as data[polarization][ant1,ant2].
+    pols: List
+        Polarizations to plot. Can include any polarization strings accepted by pyuvdata. Default is ['xx','yy'].
+    badAnts: List
+        List of antennas that have been flagged as bad - if provided, they will be excluded from averaging.
+    baselines: List
+        List of baseline types to include in calculation.
+        
+    Returns:
+    -------
+    nodeMeans: Dict
+        Per-node averaged correlation metrics, formatted as nodeMeans[node #][polarization].
+    """
+    
+    nodeDict, antDict, inclNodes = generate_nodeDict(uv)
+    antnumsAll, _, _ = sort_antennas(uv)
+    nants = len(antnumsAll)
+    nodeMeans = {}
+    nodeCorrs = {}
+    for node in nodeDict:
+        nodeCorrs[node] = {}
+        nodeMeans[node] = {}
+        for pol in pols:
+            nodeCorrs[node][pol] = []        
+    start=0
+    h = cm_hookup.Hookup()
+    x = h.get_hookup('HH')
+    for pol in pols:
+        for i in range(nants):
+            for j in range(nants):
+                ant1 = antnumsAll[i]
+                ant2 = antnumsAll[j]
+                if ant1 not in badAnts and ant2 not in badAnts and ant1 != ant2:
+                    if baselines=='all' or (ant1,ant2) in baselines:
+                        key1 = 'HH%i:A' % (ant1)
+                        n1 = x[key1].get_part_from_type('node')['E<ground'][1:]
+                        key2 = 'HH%i:A' % (ant2)
+                        n2 = x[key2].get_part_from_type('node')['E<ground'][1:]
+                        dat = data[pol][i,j]
+                        if n1 != n2:
+                            nodeCorrs[n1][pol].append(dat)
+                            nodeCorrs[n2][pol].append(dat)
+    for node in nodeDict:
+        for pol in pols:
+            nodeMeans[node][pol] = np.nanmedian(nodeCorrs[node][pol])
+    return nodeMeans
+
+
+def getIntranodeMedians(uv, data, pols=['xx','yy'],badAnts=[],baselines='all'):
+    """
+    Identifies intranode baseliens and performs averaging of correlation metric.
+    
+    Parameters:
+    ----------
+    uv: UVData Object
+        Sample observation to extract node and antenna information from.
+    data: Dict
+        Dictionary containing correlation metric information, formatted as data[polarization][ant1,ant2].
+    pols: List
+        Polarizations to plot. Can include any polarization strings accepted by pyuvdata. Default is ['xx','yy'].
+    badAnts: List
+        List of antennas that have been flagged as bad - if provided, they will be excluded from averaging.
+    baselines: List
+        List of baseline types to include in calculation.
+        
+    Returns:
+    -------
+    nodeMeans: Dict
+        Per-node averaged correlation metrics, formatted as nodeMeans[node #][polarization].
+    """
+    
+    nodeDict, antDict, inclNodes = generate_nodeDict(uv)
+    antnumsAll, _, _ = sort_antennas(uv)
+    nodeMeans = {}
+    start=0
+    for node in nodeDict:
+        nodeMeans[node]={}
+        for pol in pols:
+            nodeCorrs = []
+            for i in range(start,start+len(nodeDict[node]['ants'])):
+                for j in range(start,start+len(nodeDict[node]['ants'])):
+                    ant1 = antnumsAll[i]
+                    ant2 = antnumsAll[j]
+                    if ant1 not in badAnts and ant2 not in badAnts and i != j:
+                        if baselines=='all' or (ant1,ant2) in baselines:
+                            nodeCorrs.append(data[pol][i,j])
+            nodeMeans[node][pol] = np.nanmedian(nodeCorrs)
+        start += len(nodeDict[node]['ants'])
+    return nodeMeans
+
+#####################################################################################################################
+################################################## MISC FUNCTIONS ###################################################
+#####################################################################################################################
 
 def plot_sky_map(uvd,ra_pad=20,dec_pad=30,clip=True,fwhm=11,nx=300,ny=200,sources=[]):
+    """
+    Function to plot the Haslam radio sky map with an overlay of bright radio sources and the hera observation band. Specific LSTS observed on the given night will be shaded in.
+    
+    Parameters
+    ----------
+    uvd: UVData Object
+        UVData object used to collect telescope location and observation times. This object should contain the full time range of the observation for proper shading on the plot.
+    ra_pad: Int
+        Number of degrees to pad the HERA band in RA. Only used if clip is set to True. Default is 20.
+    dec_pad: Int
+        Number of degrees to pad the HERA band in DEC. Only used if clip is set to True. Default is 30.
+    clip: Boolean
+        Option to clip the map at the RA and DEC indicated by ra_pad and dec_pad.
+    fwhm: Int
+        FWHM of the HERA beam, used to set the width of the shaded area. Default is 11, the true fwhm of the HERA beam.
+    nx: Int
+        Number of grid points on the RA axis
+    ny: Int
+        Number of grid points on the DEC axis
+    sources: List
+        A list of radio sources to include on the map. 
+        
+    """
     map_path = f'{DATA_PATH}/haslam408_dsds_Remazeilles2014.fits'
     hdulist = fits.open(map_path)
 
@@ -361,468 +1359,9 @@ def plot_sky_map(uvd,ra_pad=20,dec_pad=30,clip=True,fwhm=11,nx=300,ny=200,source
     plt.show()
     plt.close()
     hdulist.close()
+    
 
-def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts={},tempAnts={},crossedAnts=[],use_ants='auto'):
-    status_use = ['RF_ok','digital_ok','calibration_maintenance','calibration_ok','calibration_triage']
-    if use_ants == 'auto':
-        use_ants = uvd1.get_ants()
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
-    inspectAnts = []
-    for ant in use_ants:
-        status = h.apriori[f'HH{ant}:A'].status
-        if ant in badAnts or ant in flaggedAnts.keys() or ant in crossedAnts:
-            if status in status_use:
-                inspectAnts.append(ant)
-        for k in tempAnts.keys():
-            if ant in tempAnts[k] and status in status_use:
-                inspectAnts.append(ant)
-    inspectAnts = np.unique(inspectAnts)
-    inspectTitles = {}
-    for ant in inspectAnts:
-        inspectTitles[ant] = 'Flagged by: '
-        if ant in badAnts:
-            inspectTitles[ant] = f'{inspectTitles[ant]} correlation matrix,'
-        if ant in flaggedAnts.keys():
-            inspectTitles[ant] = f'{inspectTitles[ant]} ant_metrics,'
-        if ant in crossedAnts:
-            inspectTitles[ant] = f'{inspectTitles[ant]} cross matrix,'
-        try:
-            for k in tempAnts.keys():
-                if ant in tempAnts[k]:
-                    inspectTitles[ant] = f'{inspectTitles[ant]} template - {k},'
-        except:
-            continue
-        if inspectTitles[ant][-1] == ',':
-            inspectTitles[ant] = inspectTitles[ant][:-1]
-    print('Antennas that require further inspection are:')
-    print(inspectAnts)
-    
-    for ant in inspectAnts:
-        auto_waterfall_lineplot(uvd1,ant,jd,title=inspectTitles[ant])
-        
-    return inspectAnts
-    
-def auto_waterfall_lineplot(uv, ant, jd, pols=['xx','yy'], colorbar_min=1e6, colorbar_max=1e8, title=''):
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
-    status = h.apriori[f'HH{ant}:A'].status
-    freq = uv.freq_array[0]*1e-6
-    fig = plt.figure(figsize=(12,8))
-    gs = gridspec.GridSpec(3, 2, height_ratios=[2,0.7,1])
-    it = 0
-    pol_dirs = ['NN','EE']
-    for p,pol in enumerate(pols):
-        waterfall= plt.subplot(gs[it])
-        jd_ax=plt.gca()
-        times= np.unique(uv.time_array)
-        d = np.abs(uv.get_data((ant,ant, pol)))
-        if len(np.nonzero(d)[0])==0:
-            print('#########################################')
-            print(f'Data for antenna {ant} is entirely zeros')
-            print('#########################################')
-            plt.close()
-            return
-        im = plt.imshow(d,norm=colors.LogNorm(), 
-                    aspect='auto')
-        abb = status_abbreviations[status]
-        waterfall.set_title(f'{pol_dirs[p]} pol')
-        freqs = uv.freq_array[0, :] / 1000000
-        xticks = np.arange(0, len(freqs), 120)
-        plt.xticks(xticks, labels =np.around(freqs[xticks],2))
-        if p == 0:
-            jd_ax.set_ylabel('JD')
-            jd_yticks = [int(i) for i in np.linspace(0,len(times)-1,8)]
-            jd_labels = np.around(times[jd_yticks],2)
-            jd_ax.set_yticks(jd_yticks)
-            jd_ax.set_yticklabels(jd_labels)
-            jd_ax.autoscale(False)
-        if p == 1:
-            lst_ax = jd_ax.twinx()
-            lst_ax.set_ylabel('LST (hours)')
-            lsts = uv.lst_array*3.819719
-            inds = np.unique(lsts,return_index=True)[1]
-            lsts = [lsts[ind] for ind in sorted(inds)]
-            lst_yticks = [int(i) for i in np.linspace(0,len(lsts)-1,8)]
-            lst_labels = np.around([lsts[i] for i in lst_yticks],2)
-            lst_ax.set_yticks(lst_yticks)
-            lst_ax.set_yticklabels(lst_labels)
-            lst_ax.set_ylim(jd_ax.get_ylim())
-            lst_ax.autoscale(False)
-            jd_ax.set_yticks([])
-        line= plt.subplot(gs[it+2])
-        averaged_data= np.abs(np.average(uv.get_data((ant,ant,pol)),0))
-        plt.plot(freq,averaged_data)
-        line.set_yscale('log')
-        if p == 0:
-            line.set_ylabel('Night Average')
-        else:
-            line.set_yticks([])
-        line.set_xlim(freq[0],freq[-1])
-        line.set_xticks([])
-        
-        line2 = plt.subplot(gs[it+4])
-        dat = uv.get_data((ant,ant,pol))
-        dat = np.abs(dat[len(dat)//2,:])
-        plt.plot(freq,dat)
-        line2.set_yscale('log')
-        line2.set_xlabel('Frequency (MHz)')
-        if p == 0:
-            line2.set_ylabel('Single Slice')
-        else:
-            line2.set_yticks([])
-        line2.set_xlim(freq[0],freq[-1])
-        
-        plt.setp(waterfall.get_xticklabels(), visible=False)
-        plt.subplots_adjust(hspace=.0)
-        cbar = plt.colorbar(im, pad= 0.2, orientation = 'horizontal')
-        cbar.set_label('Power')
-        it=1
-    fig.suptitle(f'{ant} ({abb})', fontsize=10, backgroundcolor=status_colors[status],y=0.96)
-    plt.annotate(title, xy=(0.5,0.94), ha='center',xycoords='figure fraction')
-    plt.show()
-    plt.close()
-
-def plot_autos(uvdx, uvdy):
-    nodes, antDict, inclNodes = generate_nodeDict(uvdx)
-    ants = uvdx.get_ants()
-    sorted_ants = sort_antennas(uvdx)
-    freqs = (uvdx.freq_array[0])*10**(-6)
-    times = uvdx.time_array
-    lsts = uvdx.lst_array  
-    maxants = 0
-    for node in nodes:
-        n = len(nodes[node]['ants'])
-        if n>maxants:
-            maxants = n
-    
-    Nants = len(ants)
-    Nside = maxants
-    Yside = len(inclNodes)
-    
-    t_index = 0
-    jd = times[t_index]
-    utc = Time(jd, format='jd').datetime
-    
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
-
-    xlim = (np.min(freqs), np.max(freqs))
-    ylim = (55, 85)
-
-    fig, axes = plt.subplots(Yside, Nside, figsize=(16,Yside*3))
-
-    ptitle = 1.92/(Yside*3)
-    fig.suptitle("JD = {0}, time = {1} UTC".format(jd, utc), fontsize=10,y=1+ptitle)
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.subplots_adjust(left=.1, bottom=.1, right=.9, top=1, wspace=0.05, hspace=0.3)
-    k = 0
-    for i,n in enumerate(inclNodes):
-        ants = nodes[n]['ants']
-        j = 0
-        for _,a in enumerate(sorted_ants):
-            if a not in ants:
-                continue
-            status = h.apriori[f'HH{a}:A'].status
-            ax = axes[i,j]
-            ax.set_xlim(xlim)
-            ax.set_ylim(ylim)
-            px, = ax.plot(freqs, 10*np.log10(np.abs(uvdx.get_data((a, a))[t_index])), color='r', alpha=0.75, linewidth=1)
-            py, = ax.plot(freqs, 10*np.log10(np.abs(uvdy.get_data((a, a))[t_index])), color='b', alpha=0.75, linewidth=1)
-            ax.grid(False, which='both')
-            abb = status_abbreviations[status]
-            ax.set_title(f'{a} ({abb})', fontsize=10, backgroundcolor=status_colors[status])
-            if k == 0:
-                ax.legend([px, py], ['NN', 'EE'])
-            if i == len(inclNodes)-1:
-                [t.set_fontsize(10) for t in ax.get_xticklabels()]
-                ax.set_xlabel('freq (MHz)', fontsize=10)
-            else:
-                ax.set_xticklabels([])
-            if j!=0:
-                ax.set_yticklabels([])
-            else:
-                [t.set_fontsize(10) for t in ax.get_yticklabels()]
-                ax.set_ylabel(r'$10\cdot\log$(amp)', fontsize=10)
-            j += 1
-            k += 1
-        for k in range(j,maxants):
-            axes[i,k].axis('off')
-        axes[i,maxants-1].annotate(f'Node {n}', (1.1,.3),xycoords='axes fraction',rotation=270)
-    plt.show()
-    plt.close()
-    
-def plot_wfs(uvd, pol, mean_sub=False, save=False, jd=''):
-    amps = np.abs(uvd.data_array[:, :, :, pol].reshape(uvd.Ntimes, uvd.Nants_data, uvd.Nfreqs, 1))
-    nodes, antDict, inclNodes = generate_nodeDict(uvd)
-    ants = uvd.get_ants()
-    sorted_ants = sort_antennas(uvd)
-    freqs = (uvd.freq_array[0])*10**(-6)
-    times = uvd.time_array
-    lsts = uvd.lst_array*3.819719
-    inds = np.unique(lsts,return_index=True)[1]
-    lsts = [lsts[ind] for ind in sorted(inds)]
-    maxants = 0
-    polnames = ['xx','yy']
-    for node in nodes:
-        n = len(nodes[node]['ants'])
-        if n>maxants:
-            maxants = n
-    
-    Nants = len(ants)
-    Nside = maxants
-    Yside = len(inclNodes)
-    
-    t_index = 0
-    jd = times[t_index]
-    utc = Time(jd, format='jd').datetime
-    
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
-    ptitle = 1.92/(Yside*3)
-    fig, axes = plt.subplots(Yside, Nside, figsize=(16,Yside*3))
-    if pol == 0:
-        fig.suptitle("North Polarization", fontsize=14, y=1+ptitle)
-    else:
-        fig.suptitle("East Polarization", fontsize=14, y=1+ptitle)
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.subplots_adjust(left=0, bottom=.1, right=.9, top=1, wspace=0.1, hspace=0.3)
-    vmin = 6.5
-    vmax = 8
-
-    for i,n in enumerate(inclNodes):
-        ants = nodes[n]['ants']
-        j = 0
-        for _,a in enumerate(sorted_ants):
-            if a not in ants:
-                continue
-            status = h.apriori[f'HH{a}:A'].status
-            abb = status_abbreviations[status]
-            ax = axes[i,j]
-            dat = np.log10(np.abs(uvd.get_data(a,a,polnames[pol])))
-            if mean_sub == True:
-                ms = np.subtract(dat, np.nanmean(dat,axis=0))
-                im = ax.imshow(ms, 
-                           vmin = -0.07, vmax = 0.07, aspect='auto',interpolation='nearest')
-            else:
-                im = ax.imshow(dat, 
-                               vmin = vmin, vmax = vmax, aspect='auto',interpolation='nearest')
-            ax.set_title(f'{a} ({abb})', fontsize=10,backgroundcolor=status_colors[status])
-            if i == len(inclNodes)-1:
-                xticks = [int(i) for i in np.linspace(0,len(freqs)-1,3)]
-                xticklabels = np.around(freqs[xticks],0)
-                ax.set_xticks(xticks)
-                ax.set_xticklabels(xticklabels)
-                ax.set_xlabel('Freq (MHz)', fontsize=10)
-                [t.set_rotation(70) for t in ax.get_xticklabels()]
-            else:
-                ax.set_xticklabels([])
-            if j != 0:
-                ax.set_yticklabels([])
-            else:
-                yticks = [int(i) for i in np.linspace(0,len(lsts)-1,6)]
-                yticklabels = [np.around(lsts[ytick],1) for ytick in yticks]
-                [t.set_fontsize(12) for t in ax.get_yticklabels()]
-                ax.set_ylabel('Time(LST)', fontsize=10)
-                ax.set_yticks(yticks)
-                ax.set_yticklabels(yticklabels)
-                ax.set_ylabel('Time(LST)', fontsize=10)
-            j += 1
-        for k in range(j,maxants):
-            axes[i,k].axis('off')
-        pos = ax.get_position()
-        cbar_ax=fig.add_axes([0.91,pos.y0,0.01,pos.height])        
-        cbar = fig.colorbar(im, cax=cbar_ax)
-        cbar.set_label(f'Node {n}',rotation=270, labelpad=15)
-    if save is True:
-        plt.savefig(f'{jd}_mean_subtracted_per_node_{pol}.png',bbox_inches='tight',dpi=300)
-    plt.show()
-    plt.close()
-    
-    
-def plot_mean_subtracted_wfs(uvd, use_ants, jd, pols=['xx','yy']):
-    freqs = (uvd.freq_array[0])*1e-6
-    times = uvd.time_array
-    lsts = uvd.lst_array*3.819719
-    inds = np.unique(lsts,return_index=True)[1]
-    lsts = [lsts[ind] for ind in sorted(inds)]
-    ants = sorted(use_ants)
-    Nants = len(ants) 
-    pol_labels = ['NN','EE']
-    
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
-    
-    fig, axes = plt.subplots(Nants, 2, figsize=(7,Nants*2.2))
-    fig.suptitle('Mean Subtracted Waterfalls')
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.subplots_adjust(left=.1, bottom=.1, right=.85, top=.975, wspace=0.05, hspace=0.2)
-
-    for i,ant in enumerate(ants):
-        status = h.apriori[f'HH{ant}:A'].status
-        abb = status_abbreviations[status]
-        color = status_colors[status]
-        for j,pol in enumerate(pols):
-            ax = axes[i,j]
-            dat = np.log10(np.abs(uvd.get_data(ant,ant,pol)))
-            ms = np.subtract(dat, np.nanmean(dat,axis=0))
-            im = ax.imshow(ms, 
-                           vmin = -0.07, vmax = 0.07, aspect='auto',interpolation='nearest')
-            ax.set_title(f'{ant} - {pol_labels[j]} ({abb})', fontsize=10, backgroundcolor=color)
-            if j != 0:
-                ax.set_yticklabels([])
-            else:
-                yticks = [int(i) for i in np.linspace(0,len(lsts)-1,6)]
-                yticklabels = [np.around(lsts[ytick],1) for ytick in yticks]
-                [t.set_fontsize(12) for t in ax.get_yticklabels()]
-                ax.set_ylabel('Time(LST)', fontsize=10)
-                ax.set_yticks(yticks)
-                ax.set_yticklabels(yticklabels)
-            if i != Nants-1:
-                ax.set_xticklabels([])
-            else:
-                xticks = [int(i) for i in np.linspace(0,len(freqs)-1,8)]
-                xticklabels = np.around(freqs[xticks],0)
-                ax.set_xticks(xticks)
-                ax.set_xticklabels(xticklabels)
-                ax.set_xlabel('Frequency (MHz)', fontsize=10)
-        if j == 1:
-            pos = ax.get_position()
-            cbar_ax=fig.add_axes([0.88,pos.y0,0.02,pos.height])
-            fig.colorbar(im, cax=cbar_ax)
-    fig.show()
-
-def plot_closure(uvd, triad_length, pol):
-    """Plot closure phase for an example triad.
-    Parameters
-    ----------
-    files : list of strings
-        List of data filenames
-    triad_length : float {14., 29.}
-        Length of the triangle segment length. Must be 14 or 29.
-    pol : str {xx, yy}
-        Polarization to plot.
-    Returns
-    -------
-    None
-    """
-
-
-    if triad_length == 14.:
-        triad_list = [[0, 11, 12], [0, 1, 12], [1, 12, 13], [1, 2, 13],
-                      [2, 13, 14], [11, 23, 24], [11, 12, 24], [12, 24, 25],
-                      [12, 13, 25], [13, 25, 26], [13, 14, 26], [14, 26, 27],
-                      [23, 36, 37], [23, 24, 37], [24, 37, 38], [24, 25, 38],
-                      [25, 38, 39], [25, 26, 39], [26, 39, 40], [26, 27, 40],
-                      [27, 40, 41], [36, 37, 51], [37, 51, 52], [37, 38, 52],
-                      [38, 52, 53], [38, 39, 53], [39, 53, 54], [39, 40, 54],
-                      [40, 54, 55], [40, 41, 55], [51, 66, 67], [51, 52, 67],
-                      [53, 54, 69], [54, 69, 70], [54, 55, 70], [55, 70, 71],
-                      [65, 66, 82], [66, 82, 83], [66, 67, 83], [67, 83, 84],
-                      [70, 71, 87], [120, 121, 140], [121, 140, 141], [121, 122, 141],
-                      [122, 141, 142], [122, 123, 142], [123, 142, 143], [123, 124, 143]]
-    else:
-        triad_list = [[0, 23, 25], [0, 2, 25], [1, 24, 26], [2, 25, 27], [11, 36, 38],
-                      [11, 13, 38], [12, 37, 39], [12, 14, 39], [13, 38, 40], [14, 39, 41],
-                      [23, 25, 52], [24, 51, 53], [24, 26, 53], [25, 52, 54], [25, 27, 54],
-                      [26, 53, 55], [36, 65, 67], [36, 38, 67], [38, 67, 69], [38, 40, 69],
-                      [39, 41, 70], [40, 69, 71], [51, 82, 84], [51, 53, 84], [52, 83, 85],
-                      [52, 54, 85], [54, 85, 87], [83, 85, 120], [85, 120, 122], [85, 87, 122],
-                      [87, 122, 124]]
-
-
-    # Look for a triad that exists in the data
-    for triad in triad_list:
-        bls = [[triad[0], triad[1]], [triad[1], triad[2]], [triad[2], triad[0]]]
-        triad_in = True
-        for bl in bls:
-            inds = uvd.antpair2ind(bl[0], bl[1], ordered=False)
-            if len(inds) == 0:
-                triad_in = False
-                break
-        if triad_in:
-            break
-
-    if not triad_in:
-        raise ValueError('Could not find triad in data.')
-
-    closure_ph = np.angle(uvd.get_data(triad[0], triad[1], pol)
-                          * uvd.get_data(triad[1], triad[2], pol)
-                          * uvd.get_data(triad[2], triad[0], pol))
-    plt.imshow(closure_ph, aspect='auto', rasterized=True,
-                           interpolation='nearest', cmap = 'twilight')
-    
-def plotNodeAveragedSummary(uv,HHfiles,jd,use_ants,pols=['xx','yy'],mat_pols=['xx','yy'],
-                            baseline_groups=[],removeBadAnts=False,plotRatios=False,plotSummary=True):
-    """
-    Plots a summary of baseline correlations throughout a night for each baseline group specified, separated into inter-node and intra-node baselines, for each polarization specified.
-    
-    Parameters
-    ----------
-    uv: UVData object
-        UVData object containing any file from the desired night of observation.
-    HHfiles: List
-        A list of all files to be looked at for the desired night of observation.
-    jd: String
-        The JD of the night of observation
-    pols: List
-        A list containing the desired polarizations to look at. Options are any polarization strings accepted by pyuvdata. 
-    baseline_groups: []
-        A list containing the baseline types to look at, formatted as (length, N-S separation, label (str)).
-    removeBadAnts: Bool
-        Option to flag seemingly dead antennas and remove them from the per-baseline-group averaging. 
-    
-    Returns
-    -------
-    badAnts: List
-        A list specifying the antennas flagged as dead or non-correlating.
-    """
-    if baseline_groups == []:
-        baseline_groups = [(14,0,'14m E-W'),(14,-11,'14m NW-SE'),(14,11,'14m SW-NE'),(29,0,'29m E-W'),(29,22,'29m SW-NE'),
-                       (44,0,'44m E-W'),(58.5,0,'58m E-W'),(73,0,'73m E-W'),(87.6,0,'88m E-W'),
-                      (102.3,0,'102m E-W')]
-    nodeMedians,lsts,badAnts=get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants,pols=pols,mat_pols=mat_pols,
-                                                                bl_type=baseline_groups,removeBadAnts=removeBadAnts,
-                                                                plotRatios=plotRatios)
-    pols = mat_pols
-    if plotSummary is False:
-        return badAnts
-    if len(lsts)>1:
-        fig,axs = plt.subplots(len(pols),2,figsize=(16,16))
-        maxLength = 0
-        cmap = plt.get_cmap('Blues')
-        for group in baseline_groups:
-            if group[0] > maxLength:
-                maxLength = group[0]
-        for group in baseline_groups:
-            length = group[0]
-            data = nodeMedians[group[2]]
-            colorInd = float(length/maxLength)
-            if len(data['inter']['xx']) == 0:
-                continue
-            for i in range(len(pols)):
-                pol = pols[i]
-                axs[i][0].plot(data['inter'][pol], color=cmap(colorInd), label=group[2])
-                axs[i][1].plot(data['intra'][pol], color=cmap(colorInd), label=group[2])
-                axs[i][0].set_ylabel('Median Correlation Metric')
-                axs[i][0].set_title('Internode, Polarization %s' % pol)
-                axs[i][1].set_title('Intranode, Polarization %s' % pol)
-                xticks = np.arange(0,len(lsts),1)
-                axs[i][0].set_xticks(xticks)
-                axs[i][0].set_xticklabels([str(lst) for lst in lsts])
-                axs[i][1].set_xticks(xticks)
-                axs[i][1].set_xticklabels([str(lst) for lst in lsts])
-        axs[1][1].legend()
-        axs[1][0].set_xlabel('LST (hours)')
-        axs[1][1].set_xlabel('LST (hours)')
-        fig.tight_layout()
-    else:
-        print('#############################################################################')
-        print('Not enough LST coverage to show metric evolution - that plot is being skipped')
-        print('#############################################################################')
-    return badAnts
-    
-def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
+def plotVisibilitySpectra(file,jd,use_ants='all',badAnts=[],pols=['xx','yy']):
     """
     Plots visibility amplitude spectra for a set of redundant baselines, labeled by inter vs. intranode baselines.
     
@@ -832,10 +1371,17 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
         File to calculate the spectra from
     jd: String
         JD of the night 'file' was observed on
+    use_ants: List or 'all'
+        List of antennas to include. If set to 'all', all antennas with data will be included.
     badAnts: List
         A list of antennas not to include in the plot
     pols: List
         Polarizations to plot. Can include any polarization strings accepted by pyuvdata.
+        
+    Returns:
+    --------
+    None
+    
     """
     
     pol_labels = ['NS','EW']
@@ -844,7 +1390,7 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
     uv.read_uvh5(file)
     h = cm_hookup.Hookup()
     x = h.get_hookup('HH')
-    baseline_groups = get_baseline_groups(uv,use_ants="auto")
+    baseline_groups = get_baseline_groups(uv,use_ants="all")
     freqs = uv.freq_array[0]/1000000
     loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
     obstime_start = Time(uv.time_array[0],format='jd',location=loc)
@@ -915,7 +1461,7 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
     plt.show()
     plt.close()
     
-def plot_antenna_positions(uv, badAnts={},flaggedAnts={},use_ants='auto'):
+def plot_antenna_positions(uv, badAnts=[],flaggedAnts={},use_ants='all'):
     """
     Plots the positions of all antennas that have data, colored by node.
     
@@ -927,10 +1473,19 @@ def plot_antenna_positions(uv, badAnts={},flaggedAnts={},use_ants='auto'):
         A list of flagged or bad antennas. These will be outlined in black in the plot. 
     flaggedAnts: Dict
         A dict of antennas flagged by ant_metrics with value corresponding to color in ant_metrics plot
+    use_ants: List or 'all'
+        List of antennas to include, or set to 'all' to include all antennas.
+        
+    Returns:
+    ---------- 
+    None
+    
     """
     
     plt.figure(figsize=(12,10))
     nodes, antDict, inclNodes = generate_nodeDict(uv)
+    if use_ants == 'all':
+        use_ants = uv.get_ants()
     N = len(inclNodes)
     cmap = plt.get_cmap('tab20')
     i = 0
@@ -1020,6 +1575,11 @@ def plot_lst_coverage(uvd):
     ----------
     uvd: UVData Object
         Object containing a whole night of data, used to extract the time array.
+    
+    Returns:
+    ----------
+    None
+    
     """
     lsts = uvd.lst_array*3.819719
     jds = np.unique(uvd.time_array)
@@ -1064,9 +1624,11 @@ def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
         Object containing autos from sum files
     uvd_diff : UVData Object
         Object containing autos from diff files
+        
     Returns
     -------
     None
+    
     """
     nants = len(uvd_sum.get_ants())
     freqs = uvd_sum.freq_array[0]*1e-6
@@ -1105,676 +1667,430 @@ def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
         i += 192
     plt.show()
     plt.close()
-    return rat
     
-def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.35, plotRatios=False):
-    """
-    Calculates a matrix of phase correlations between antennas, where each pixel is calculated as (even/abs(even)) * (conj(odd)/abs(odd)), and then averaged across time and frequency.
-    
-    Paramters:
-    ---------
-    sm: UVData Object
-        Sum observation.
-    df: UVData Object
-        Diff observation. Must be the same time of observation as sm. 
-    pols: List
-        Polarizations to plot. Can include any polarization strings accepted by pyuvdata.
-    nodes: String or List
-        Nodes to include in matrix. Default is 'auto', which generates a list of all nodes included in the provided data files. 
-    badThresh: Float
-        Threshold correlation metric value to use for flagging bad antennas.
-    
-    Returns:
-    -------
-    data: Dict
-        Dictionary containing calculated values, formatted as data[polarization][ant1,ant2]. 
-    badAnts: List
-        List of antennas that were flagged as bad based on badThresh.
-    """
-    if sm.time_array[0] != df.time_array[0]:
-        print('FATAL ERROR: Sum and diff files are not from the same observation!')
-        return None
-    if nodes=='auto':
-        nodeDict, antDict, inclNodes = generate_nodeDict(sm)
-    nants = len(sm.get_ants())
-    data = {}
-    antnumsAll = sort_antennas(sm)
-    badAnts = []
-    for p in range(len(pols)):
-        pol = pols[p]
-        data[pol] = np.empty((nants,nants))
-        for i in range(len(antnumsAll)):
-            thisAnt = []
-            for j in range(len(antnumsAll)):
-                ant1 = antnumsAll[i]
-                ant2 = antnumsAll[j]
-                s = sm.get_data(ant1,ant2,pol)
-                d = df.get_data(ant1,ant2,pol)
-                even = (s + d)/2
-                even = np.divide(even,np.abs(even))
-                odd = (s - d)/2
-                odd = np.divide(odd,np.abs(odd))
-                product = np.multiply(even,np.conj(odd))
-                data[pol][i,j] = np.abs(np.nanmean(product))
-                thisAnt.append(np.abs(np.nanmean(product)))
-            pgood = np.count_nonzero(~np.isnan(thisAnt))/len(thisAnt)
-            if (np.nanmedian(thisAnt) < badThresh or pgood<0.2) and antnumsAll[i] not in badAnts:
-                if pol[0]==pol[1]:
-                    #Don't assign bad ants based on cross pols
-                    badAnts.append(antnumsAll[i])
-    if plotRatios is True:
-        if len(pols) == 4:
-            data['xx-xy'] = np.subtract(data['xx'],data['xy'])
-            data['xx-yx'] = np.subtract(data['xx'],data['yx'])
-            data['yy-xy'] = np.subtract(data['yy'],data['xy'])
-            data['yy-yx'] = np.subtract(data['yy'],data['yx'])
-        else:
-            print('Can only calculate differences if cross pols were specified')
-        polAnts = {}
-        badAnts = []
-        subs = ['xx-xy','xx-yx','yy-xy','yy-yx']
-        for k in subs:
-            for i,ant in enumerate(antnumsAll):
-                dat = data[k][i,:]
-                if np.nanmedian(dat) < 0:
-                    if ant in polAnts.keys():
-                        polAnts[ant] = polAnts[ant] + 1
-                    else:
-                        polAnts[ant] = 1
-                    if polAnts[ant] == 4:
-                        badAnts.append(ant)
-    return data, badAnts
 
-
-def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logScale=False,plotRatios=False):
+def flag_by_template(uvd,HHfiles,jd,use_ants='all',pols=['XX','YY'],temp_norm=True,plotMap=False):
     """
-    Plots a matrix representing the phase correlation of each baseline.
+    Function to automatically flag concerning antennas.
     
-    Parameters:
+    Parameters
     ----------
-    uv: UVData Object
-        Observation used for calculating the correlation metric
-    data: Dict
-        Dictionary containing the correlation metric for each baseline and each polarization. Formatted as data[polarization]  [ant1,ant2] 
-    pols: List
-        Polarizations to plot. Can include any polarization strings accepted by pyuvdata.
-    vminIn: float
-        Lower limit of colorbar. Default is 0.
-    vmaxIn: float
-        Upper limit of colorbar. Default is 1.
-    nodes: Dict
-        Dictionary containing the nodes (and their constituent antennas) to include in the matrix. Formatted as nodes[Node #][Ant List, Snap # List, Snap Location List].
-    logScale: Bool
-        Option to put colormap on a logarithmic scale. Default is False.
-    """
-    if nodes=='auto':
-        nodeDict, antDict, inclNodes = generate_nodeDict(uv)
-    nantsTotal = len(uv.get_ants())
-    power = np.empty((nantsTotal,nantsTotal))
-    fig, axs = plt.subplots(2,2,figsize=(16,16))
-    dirs = ['NN','EE','NE','EN']
-    cmap='plasma'
-    if plotRatios is True:
-        pols = ['xx-xy','yy-xy','xx-yx','yy-yx']
-        dirs=pols
-        vminIn=-1
-        cmap='seismic'
-    loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
-    jd = uv.time_array[0]
-    t = Time(jd,format='jd',location=loc)
-    lst = round(t.sidereal_time('mean').hour,2)
-    t.format='fits'
-    antnumsAll = sort_antennas(uv)
-    i = 0
-    for p in range(len(pols)):
-        if p >= 2:
-            i=1
-        pol = pols[p]
-        nants = len(antnumsAll)
-        if logScale is True:
-            im = axs[i][p%2].imshow(data[pol],cmap=cmap,origin='upper',extent=[0.5,nantsTotal+.5,0.5,nantsTotal+0.5],norm=LogNorm(vmin=vminIn, vmax=vmaxIn))
-        else:
-            im = axs[i][p%2].imshow(data[pol],cmap=cmap,origin='upper',extent=[0.5,nantsTotal+.5,0.5,nantsTotal+0.5],vmin=vminIn, vmax=vmaxIn)
-        axs[i][p%2].set_xticks(np.arange(0,nantsTotal)+1)
-        axs[i][p%2].set_xticklabels(antnumsAll,rotation=90,fontsize=6)
-        axs[i][p%2].xaxis.set_ticks_position('top')
-        axs[i][p%2].set_title('polarization: ' + dirs[p] + '\n')
-        n=0
-        for node in sorted(inclNodes):
-            n += len(nodeDict[node]['ants'])
-            axs[i][p%2].axhline(len(antnumsAll)-n+.5,lw=4)
-            axs[i][p%2].axvline(n+.5,lw=4)
-            axs[i][p%2].text(n-len(nodeDict[node]['ants'])/2,-.5,node)
-        axs[i][p%2].text(.42,-.05,'Node Number',transform=axs[i][p%2].transAxes)
-    n=0
-    for node in sorted(inclNodes):
-        n += len(nodeDict[node]['ants'])
-        axs[0][1].text(nantsTotal+1,nantsTotal-n+len(nodeDict[node]['ants'])/2,node)
-        axs[1][1].text(nantsTotal+1,nantsTotal-n+len(nodeDict[node]['ants'])/2,node)
-    axs[0][1].text(1.05,0.4,'Node Number',rotation=270,transform=axs[0][1].transAxes)
-    axs[0][1].set_yticklabels([])
-    axs[0][1].set_yticks([])
-    axs[0][0].set_yticks(np.arange(nantsTotal,0,-1))
-    axs[0][0].set_yticklabels(antnumsAll,fontsize=6)
-    axs[0][0].set_ylabel('Antenna Number')
-    axs[1][1].text(1.05,0.4,'Node Number',rotation=270,transform=axs[1][1].transAxes)
-    axs[1][1].set_yticklabels([])
-    axs[1][1].set_yticks([])
-    axs[1][0].set_yticks(np.arange(nantsTotal,0,-1))
-    axs[1][0].set_yticklabels(antnumsAll,fontsize=6)
-    axs[1][0].set_ylabel('Antenna Number')
-    cbar_ax = fig.add_axes([0.98,0.18,0.015,0.6])
-    cbar_ax.set_xlabel('|V|', rotation=0)
-    cbar = fig.colorbar(im, cax=cbar_ax)
-    fig.suptitle('Correlation Matrix - JD: %s, LST: %.0fh' % (str(jd),np.round(lst,0)))
-    fig.subplots_adjust(top=1.28,wspace=0.05,hspace=1.1)
-    fig.tight_layout()
-    plt.show()
-    plt.close()
-    
-def plot_single_matrix(uv,data,vminIn=0,vmaxIn=1,nodes='auto',logScale=False):
-    if nodes=='auto':
-        nodeDict, antDict, inclNodes = generate_nodeDict(uv)
-    nantsTotal = len(uv.get_ants())
-    power = np.empty((nantsTotal,nantsTotal))
-    fig, axs = plt.subplots(1,1,figsize=(16,16))
-    loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
-    jd = uv.time_array[0]
-    t = Time(jd,format='jd',location=loc)
-    lst = round(t.sidereal_time('mean').hour,2)
-    t.format='fits'
-    antnumsAll = sort_antennas(uv)
-    nants = len(antnumsAll)
-    if logScale is True:
-        im = axs[0][0].imshow(data[pol],cmap='plasma',origin='upper',
-                                extent=[0.5,nantsTotal+.5,0.5,nantsTotal+0.5],norm=LogNorm(vmin=vminIn, vmax=vmaxIn))
-    else:
-        im = axs[0][0].imshow(data[pol],cmap='plasma',origin='upper',extent=
-                                [0.5,nantsTotal+.5,0.5,nantsTotal+0.5],vmin=vminIn, vmax=vmaxIn)
-    axs[0][0].set_xticks(np.arange(0,nantsTotal)+1)
-    axs[0][0].set_xticklabels(antnumsAll,rotation=90,fontsize=6)
-    axs[0][0].xaxis.set_ticks_position('top')
-    axs[0][0].set_title('polarization: ' + dirs[p] + '\n')
-    n=0
-    for node in sorted(inclNodes):
-        n += len(nodeDict[node]['ants'])
-        axs[0][0].axhline(len(antnumsAll)-n+.5,lw=4)
-        axs[0][0].axvline(n+.5,lw=4)
-        axs[0][0].text(n-len(nodeDict[node]['ants'])/2,-.5,node)
-    axs[0][0].text(.42,-.05,'Node Number',transform=axs[0][0].transAxes)
-    n=0
-    for node in sorted(inclNodes):
-        n += len(nodeDict[node]['ants'])
-        axs[0][0].text(nantsTotal+1,nantsTotal-n+len(nodeDict[node]['ants'])/2,node)
-    axs[0][0].text(1.05,0.4,'Node Number',rotation=270,transform=axs[0][0].transAxes)
-    axs[0][0].set_yticks(np.arange(nantsTotal,0,-1))
-    axs[0][0].set_yticklabels(antnumsAll,fontsize=6)
-    axs[0][0].set_ylabel('Antenna Number')
-    axs[0][0].text(1.05,0.4,'Node Number',rotation=270,transform=axs[0][0].transAxes)
-    cbar_ax = fig.add_axes([0.98,0.18,0.015,0.6])
-    cbar_ax.set_xlabel('|V|', rotation=0)
-    cbar = fig.colorbar(im, cax=cbar_ax)
-    fig.suptitle('Correlation Matrix - JD: %s, LST: %.0fh' % (str(jd),np.round(lst,0)))
-    fig.subplots_adjust(top=1.28,wspace=0.05,hspace=1.1)
-    fig.tight_layout()
-    plt.show()
-    plt.close()
-    
-def get_hourly_files(uv, HHfiles, jd):
-    """
-    Generates a list of files spaced one hour apart throughout a night of observation, and the times those files were observed.
-    
-    Parameters:
-    ----------
-    uv: UVData Object
-        Sample observation from the given night, used only for grabbing the telescope location
-    HHFiles: List
-        List of all files from the desired night of observation
-    jd: String
-        JD of the night of observation
-        
-    Returns:
-    -------
-    use_files: List
-        List of files separated by one hour
-    use_lsts: List
-        List of LSTs of observations in use_files
-    """
-    use_lsts = []
-    use_files = []
-    use_file_inds = []
-    loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
-    for i,file in enumerate(HHfiles):
-        try:
-            dat = UVData()
-            dat.read(file, read_data=False)
-        except KeyError:
-            continue
-        jd = dat.time_array[0]
-        t = Time(jd,format='jd',location=loc)
-        lst = round(t.sidereal_time('mean').hour,2)
-        if np.round(lst,0) == 24:
-            continue
-        if np.abs((lst-np.round(lst,0)))<0.05:
-            if len(use_lsts)>0 and np.abs(use_lsts[-1]-lst)<0.5:
-                if np.abs((lst-np.round(lst,0))) < abs((use_lsts[-1]-np.round(lst,0))):
-                    use_lsts[-1] = lst
-                    use_files[-1] = file
-                    use_file_inds[-1] = i
-            else:
-                use_lsts.append(lst)
-                use_files.append(file)
-                use_file_inds.append(i)
-    return use_files, use_lsts, use_file_inds
-
-def get_baseline_groups(uv, bl_groups=[(14,0,'14m E-W'),(29,0,'29m E-W'),(14,-11,'14m NW-SE'),(14,11,'14m SW-NE')],
-                       use_ants='auto'):
-    """
-    Generate dictionary containing baseline groups.
-    
-    Parameters:
-    ----------
-    uv: UVData Object
-        Observation to extract antenna position information from
-    bl_groups: List
-        Desired baseline types to extract, formatted as (length (float), N-S separation (float), label (string))
-        
-    Returns:
-    --------
-    bls: Dict
-        Dictionary containing list of lists of redundant baseline numbers, formatted as bls[group label]
-    """
-    
-    bls={}
-    baseline_groups,vec_bin_centers,lengths = uv.get_redundancies(use_antpos=False,include_autos=False)
-    for i in range(len(baseline_groups)):
-        bl = baseline_groups[i]
-        for group in bl_groups:
-            if np.abs(lengths[i]-group[0])<1:
-                ant1 = uv.baseline_to_antnums(bl[0])[0]
-                ant2 = uv.baseline_to_antnums(bl[0])[1]
-                if use_ants == 'auto' or (ant1 in use_ants and ant2 in use_ants):
-                    antPos1 = uv.antenna_positions[np.argwhere(uv.antenna_numbers == ant1)]
-                    antPos2 = uv.antenna_positions[np.argwhere(uv.antenna_numbers == ant2)]
-                    disp = (antPos2-antPos1)[0][0]
-                    if np.abs(disp[2]-group[1])<0.5:
-                        bls[group[2]] = bl
-    return bls
-
-
-    
-def get_correlation_baseline_evolutions(uv,HHfiles,jd,use_ants='auto',badThresh=0.35,pols=['xx','yy'],bl_type=(14,0,'14m E-W'),
-                                        removeBadAnts=False, plotMatrix=True,mat_pols=['xx','yy','xy','yx'],plotRatios=False):
-    """
-    Calculates the average correlation metric for a set of redundant baseline groups at one hour intervals throughout a night of observation.
-    
-    Parameters:
-    ----------
-    uv: UVData Object
-        Sample observation from the desired night, used only for getting telescope location information.
+    uvd: UVData Object
+        Data to flag on.
     HHfiles: List
-        List of all files for a night of observation
-    jd: String
-        JD of the given night of observation
-    badThresh: Float
-        Threshold correlation metric value to use for flagging bad antennas. Default is 0.35.
+        List of full paths to data files
+    jd: Int
+        Julian date of the observation
+    use_ants: List or 'all'
+        Either a list of antennas to include, or 'all' to include all antennas. Default is 'all'.
     pols: List
-        Polarizations to plot. Can include any polarization strings accepted by pyuvdata.
-    bl_type: Tuple
-        Redundant baseline group to calculate correlation metric for. Default is 14m E-W baselines
-    removeBadAnts: Bool
-        Option to exclude antennas marked as bad from calculation. Default is False.
-    plotMatrix: Bool
-        Option to plot the correlation matrix for observations once each hour. Default is True.
-        
-    Returns:
-    -------
-    result: Dict
-        Per hour correlation metric, formatted as result[baseline type]['inter' or 'intra'][polarization]
-    lsts: List
-        LSTs that metric was calculated for, spaced 1 hour apart.
-    bad_antennas: List
-        Antenna numbers flagged as bad based on badThresh parameter.
+        List of polarizations to flag on. Default is ['XX','YY'].
+    temp_norm: Boolean
+        Option to normalize the data by the template. Default is True.
+    plotMap: Boolean
+        Option to plot the colormap. Default is False.
     """
-    files, lsts, inds = get_hourly_files(uv, HHfiles, jd)
-    if use_ants == 'auto':
-        use_ants = uv.get_ants()
-    if plotRatios is True:
-        files = [files[len(files)//2]]
-        nTimes=1
-    else:
-        nTimes = len(files)
-    if nTimes > 3:
-        plotTimes = [0,nTimes//2,nTimes-1]
-    else:
-        plotTimes = np.arange(0,nTimes,1)
-    nodeDict, antDict, inclNodes = generate_nodeDict(uv)
-    JD = math.floor(uv.time_array[0])
-    bad_antennas = []
-    pols = mat_pols
-    corrSummary = generateDataTable(uv,pols=pols)
-    result = {}
-    for f in range(nTimes):
-        file = files[f]
-        ind = inds[f]
-        sm = UVData()
-        df = UVData()
-        try:
-#             print(f'Trying to read {file}')
-            sm.read(file, skip_bad_files=True, antenna_nums=use_ants)
-            dffile = '%sdiff%s' % (file[0:-8],file[-5:])
-            df.read(dffile, skip_bad_files=True, antenna_nums=use_ants)
-        except:
-            i = -5
-            read = False
-            while i<5 and read==False:
-                try:
-                    file = HHfiles[ind+i]
-#                     print(f'trying to read {file}')
-                    sm.read(file, skip_bad_files=True, antenna_nums=use_ants)
-                    dffile = '%sdiff%s' % (file[0:-8],file[-5:])
-                    df.read(dffile, skip_bad_files=True, antenna_nums=use_ants)
-                    read = True
-                except:
-                    i += 1
-            if read == False:
-                print(f'WARNING: unable to read {file}')
-                continue
-        matrix, badAnts = calcEvenOddAmpMatrix(sm,df,nodes='auto',pols=mat_pols,badThresh=badThresh,plotRatios=plotRatios)
-        bad_antennas=badAnts
-        if plotMatrix is True and f in plotTimes:
-            plotCorrMatrix(sm, matrix, pols=mat_pols, nodes='auto',plotRatios=plotRatios)
-        for group in bl_type:
-            medians = {
-                'inter' : {},
-                'intra' : {}
-                }
-            for pol in pols:
-                medians['inter'][pol] = []
-                medians['intra'][pol] = []
-            if group[2] not in result.keys():
-                result[group[2]] = {
-                    'inter' : {},
-                    'intra' : {}
-                }
-                for pol in pols:
-                    result[group[2]]['inter'][pol] = []
-                    result[group[2]]['intra'][pol] = []
-            bls = get_baseline_type(uv,bl_type=group,use_ants=use_ants)
-            if bls == None:
-#                 print(f'No baselines of type {group}')
-                continue
-            baselines = [uv.baseline_to_antnums(bl) for bl in bls]
-            if removeBadAnts is True:
-                nodeInfo = {
-                    'inter' : getInternodeMedians(sm,matrix,badAnts=bad_antennas, baselines=baselines,pols=pols),
-                    'intra' : getIntranodeMedians(sm,matrix,badAnts=bad_antennas, baselines=baselines,pols=pols)
-                }
-            else:
-                nodeInfo = {
-                    'inter' : getInternodeMedians(sm,matrix, baselines=baselines,pols=pols),
-                    'intra' : getIntranodeMedians(sm,matrix,baselines=baselines,pols=pols)
-                }
-            for node in nodeDict:
-                for pol in pols:
-                    corrSummary[node][pol]['inter'].append(nodeInfo['inter'][node][pol])
-                    corrSummary[node][pol]['intra'].append(nodeInfo['intra'][node][pol])
-                    medians['inter'][pol].append(nodeInfo['inter'][node][pol])
-                    medians['intra'][pol].append(nodeInfo['intra'][node][pol])
-            for pol in pols:
-                result[group[2]]['inter'][pol].append(np.nanmedian(medians['inter'][pol]))
-                result[group[2]]['intra'][pol].append(np.nanmedian(medians['intra'][pol]))
-    return result,lsts,bad_antennas
-
-def generateDataTable(uv,pols=['xx','yy']):
-    """
-    Simple helper function to generate an empty dictionary of the format desired for get_correlation_baseline_evolutions()
-    
-    Parameters:
-    ----------
-    uv: UVData Object
-        Sample observation to extract node and antenna information from.
-    pols: List
-        Polarizations to plot. Can include any polarization strings accepted by pyuvdata. Default is ['xx','yy'].
-        
-    Returns:
-    -------
-    dataObject: Dict
-        Empty dict formatted as dataObject[node #][polarization]['inter' or 'intra']
-    """
-    
-    nodeDict, antDict, inclNodes = generate_nodeDict(uv)
-    dataObject = {}
-    for node in nodeDict:
-        dataObject[node] = {}
-        for pol in pols:
-            dataObject[node][pol] = {
-                'inter' : [],
-                'intra' : []
-            }
-    return dataObject
-
-def getInternodeMedians(uv,data,pols=['xx','yy'],badAnts=[],baselines='all'):
-    """
-    Identifies internode baseliens and performs averaging of correlation metric.
-    
-    Parameters:
-    ----------
-    uv: UVData Object
-        Sample observation to extract node and antenna information from.
-    data: Dict
-        Dictionary containing correlation metric information, formatted as data[polarization][ant1,ant2].
-    pols: List
-        Polarizations to plot. Can include any polarization strings accepted by pyuvdata. Default is ['xx','yy'].
-    badAnts: List
-        List of antennas that have been flagged as bad - if provided, they will be excluded from averaging.
-    baselines: List
-        List of baseline types to include in calculation.
-        
-    Returns:
-    -------
-    nodeMeans: Dict
-        Per-node averaged correlation metrics, formatted as nodeMeans[node #][polarization].
-    """
-    
-    nodeDict, antDict, inclNodes = generate_nodeDict(uv)
-    antnumsAll=sort_antennas(uv)
-    nants = len(antnumsAll)
-    nodeMeans = {}
-    nodeCorrs = {}
-    for node in nodeDict:
-        nodeCorrs[node] = {}
-        nodeMeans[node] = {}
-        for pol in pols:
-            nodeCorrs[node][pol] = []        
-    start=0
-    h = cm_hookup.Hookup()
-    x = h.get_hookup('HH')
+    use_files, use_lsts, use_file_inds = get_hourly_files(uvd,HHfiles,jd)
+    temp = {}
+    ant_dfs = {}
     for pol in pols:
-        for i in range(nants):
-            for j in range(nants):
-                ant1 = antnumsAll[i]
-                ant2 = antnumsAll[j]
-                if ant1 not in badAnts and ant2 not in badAnts and ant1 != ant2:
-                    if baselines=='all' or (ant1,ant2) in baselines:
-                        key1 = 'HH%i:A' % (ant1)
-                        n1 = x[key1].get_part_from_type('node')['E<ground'][1:]
-                        key2 = 'HH%i:A' % (ant2)
-                        n2 = x[key2].get_part_from_type('node')['E<ground'][1:]
-                        dat = data[pol][i,j]
-                        if n1 != n2:
-                            nodeCorrs[n1][pol].append(dat)
-                            nodeCorrs[n2][pol].append(dat)
-    for node in nodeDict:
-        for pol in pols:
-            nodeMeans[node][pol] = np.nanmedian(nodeCorrs[node][pol])
-    return nodeMeans
-
-def getIntranodeMedians(uv, data, pols=['xx','yy'],badAnts=[],baselines='all'):
-    """
-    Identifies intranode baseliens and performs averaging of correlation metric.
-    
-    Parameters:
-    ----------
-    uv: UVData Object
-        Sample observation to extract node and antenna information from.
-    data: Dict
-        Dictionary containing correlation metric information, formatted as data[polarization][ant1,ant2].
-    pols: List
-        Polarizations to plot. Can include any polarization strings accepted by pyuvdata. Default is ['xx','yy'].
-    badAnts: List
-        List of antennas that have been flagged as bad - if provided, they will be excluded from averaging.
-    baselines: List
-        List of baseline types to include in calculation.
-        
-    Returns:
-    -------
-    nodeMeans: Dict
-        Per-node averaged correlation metrics, formatted as nodeMeans[node #][polarization].
-    """
-    
-    nodeDict, antDict, inclNodes = generate_nodeDict(uv)
-    antnumsAll=sort_antennas(uv)
-    nodeMeans = {}
-    start=0
-    for node in nodeDict:
-        nodeMeans[node]={}
-        for pol in pols:
-            nodeCorrs = []
-            for i in range(start,start+len(nodeDict[node]['ants'])):
-                for j in range(start,start+len(nodeDict[node]['ants'])):
-                    ant1 = antnumsAll[i]
-                    ant2 = antnumsAll[j]
-                    if ant1 not in badAnts and ant2 not in badAnts and i != j:
-                        if baselines=='all' or (ant1,ant2) in baselines:
-                            nodeCorrs.append(data[pol][i,j])
-            nodeMeans[node][pol] = np.nanmedian(nodeCorrs)
-        start += len(nodeDict[node]['ants'])
-    return nodeMeans
-
-def get_baseline_type(uv,bl_type=(14,0,'14m E-W'),use_ants='auto'):
-    """
-    Parameters:
-    ----------
-    uv: UVData Object
-        Sample observation to get baseline information from.
-    bl_type: Tuple
-        Redundant baseline group to extract baseline numbers for. Formatted as (length, N-S separation, label).
-    
-    Returns:
-    -------
-    bl: List
-        List of lists of redundant baseline numbers. Returns None if the provided bl_type is not found.
-    """
-    
-    baseline_groups,vec_bin_centers,lengths = uv.get_redundancies(use_antpos=False,include_autos=False)
-    for i in range(len(baseline_groups)):
-        bl = baseline_groups[i]
-        if np.abs(lengths[i]-bl_type[0])<1:
-            ant1 = uv.baseline_to_antnums(bl[0])[0]
-            ant2 = uv.baseline_to_antnums(bl[0])[1]
-            if (ant1 in use_ants and ant2 in use_ants) or use_ants == 'auto':
-                antPos1 = uv.antenna_positions[np.argwhere(uv.antenna_numbers == ant1)]
-                antPos2 = uv.antenna_positions[np.argwhere(uv.antenna_numbers == ant2)]
-                disp = (antPos2-antPos1)[0][0]
-                if np.abs(disp[2]-bl_type[1])<0.5:
-                    return bl
-    return None
-
-def generate_nodeDict(uv):
-    """
-    Generates dictionaries containing node and antenna information.
-    
-    Parameters:
-    ----------
-    uv: UVData Object
-        Sample observation to extract node and antenna information from.
-    
-    Returns:
-    -------
-    nodes: Dict
-        Dictionary containing entry for all nodes, each of which has keys: 'ants', 'snapLocs', 'snapInput'.
-    antDict: Dict
-        Dictionary containing entry for all antennas, each of which has keys: 'node', 'snapLocs', 'snapInput'.
-    inclNodes: List
-        Nodes that have hooked up antennas.
-    """
-    
-    antnums = uv.get_ants()
-    h = cm_hookup.Hookup()
-    x = h.get_hookup('HH')
-    nodes = {}
-    antDict = {}
-    inclNodes = []
-    for ant in antnums:
-        key = 'HH%i:A' % (ant)
-        n = x[key].get_part_from_type('node')['E<ground'][1:]
-        snapLoc = (x[key].hookup['E<ground'][-1].downstream_input_port[-1], ant)
-        snapInput = (x[key].hookup['E<ground'][-2].downstream_input_port[1:], ant)
-        antDict[ant] = {}
-        antDict[ant]['node'] = str(n)
-        antDict[ant]['snapLocs'] = snapLoc
-        antDict[ant]['snapInput'] = snapInput
-        inclNodes.append(n)
-        if n in nodes:
-            nodes[n]['ants'].append(ant)
-            nodes[n]['snapLocs'].append(snapLoc)
-            nodes[n]['snapInput'].append(snapInput)
-        else:
-            nodes[n] = {}
-            nodes[n]['ants'] = [ant]
-            nodes[n]['snapLocs'] = [snapLoc]
-            nodes[n]['snapInput'] = [snapInput]
-    inclNodes = np.unique(inclNodes)
-    return nodes, antDict, inclNodes
-
-def sort_antennas(uv):
-    """
-    Helper function that sorts antennas by snap input number.
-    
-    Parameters:
-    ----------
-    uv: UVData Object
-        Sample observation used for extracting node and antenna information.
-        
-    Returns:
-    -------
-    sortedAntennas: List
-        All antennas with data, sorted into order of ascending node number, and within that by ascending snap number, and within that by ascending snap input number.
-    """
-    
-    nodes, antDict, inclNodes = generate_nodeDict(uv)
-    sortedAntennas = []
-    for n in sorted(inclNodes):
-        snappairs = []
-        h = cm_hookup.Hookup()
-        x = h.get_hookup('HH')
-        for ant in nodes[n]['ants']:
-            snappairs.append(antDict[ant]['snapLocs'])
-        snapLocs = {}
-        locs = []
-        for pair in snappairs:
-            ant = pair[1]
-            loc = pair[0]
-            locs.append(loc)
-            if loc in snapLocs:
-                snapLocs[loc].append(ant)
+        temp[pol] = read_template(pol)
+        ant_dfs[pol] = {}
+    if use_ants == 'all':
+        use_ants = uvd.get_ants()
+    polDirs=['NN','EE']
+    flaggedAnts = {polDirs[0]: [], polDirs[1]: []}
+    for i,lst in enumerate(use_lsts):
+#         print(lst)
+        hdat = UVData()
+        hdat.read(use_files[i],antenna_nums=use_ants)
+        for p,pol in enumerate(pols):
+            ant_dfs[pol][lst] = {}
+            ranges = np.asarray(temp[pol]['lst_ranges'][0])
+            if len(np.argwhere(ranges[:,0]<lst)) > 0:
+                ind = np.argwhere(ranges[:,0]<lst)[-1][0]
             else:
-                snapLocs[loc] = [ant]
-        locs = sorted(np.unique(locs))
-        ants_sorted = []
-        for loc in locs:
-            ants = snapLocs[loc]
-            inputpairs = []
-            for ant in ants:
-                key = 'HH%i:A' % (ant)
-                pair = (int(x[key].hookup['E<ground'][-2].downstream_input_port[1:]), ant)
-                inputpairs.append(pair)
-            for _,a in sorted(inputpairs):
-                ants_sorted.append(a)
-        for ant in ants_sorted:
-            sortedAntennas.append(ant)
-    return sortedAntennas
+                if p == 0:
+                    print(f'No template for lst={lst} - skipping')
+                continue
+            dat = np.abs(temp[pol][str(ind)])
+            if temp_norm is True:
+                medpower = np.nanmedian(np.log10(np.abs(hdat.data_array)))
+                medtemp = np.nanmedian(dat)
+                norm = np.divide(medpower,medtemp)
+                dat = np.multiply(dat,norm)        
+            for ant in use_ants:
+                d = np.log10(np.abs(hdat.get_data((ant,ant,pol))))
+                d = np.average(d,axis=0)
+                df = np.abs(np.subtract(dat,d))
+                ant_dfs[pol][lst][ant] = np.nanmedian(df)
+            if plotMap is True:
+                fig = plt.figure(figsize=(18,10))
+                cmap = plt.get_cmap('inferno')
+                sm = plt.cm.ScalarMappable(cmap=cmap,norm=plt.Normalize(vmin=0,vmax=1))
+                sm._A = []
+            ampmin=100000000000000
+            ampmax=0
+            for ant in use_ants:
+                amp = ant_dfs[pol][lst][ant]
+                if amp > ampmax: ampmax=amp
+                elif amp < ampmin: ampmin=amp
+            rang = ampmax-ampmin
+            for ant in use_ants:
+                idx = np.argwhere(hdat.antenna_numbers == ant)[0][0]
+                antPos = hdat.antenna_positions[idx]
+                amp = ant_dfs[pol][lst][ant]
+                if math.isnan(amp):
+                    marker="v"
+                    color="r"
+                    markersize=30
+                else:
+                    cind = float((amp-ampmin)/rang)
+                    if plotMap is True:
+                        coloramp = cmap(cind)
+                        color=coloramp
+                        marker="h"
+                        markersize=40
+                if cind > 0.15 and ant not in flaggedAnts[polDirs[p]]:
+                    flaggedAnts[polDirs[p]].append(ant)
+                if plotMap is True:
+                    plt.plot(antPos[1],antPos[2],marker=marker,markersize=markersize,color=color)
+                    if math.isnan(amp) or coloramp[0]>0.6:
+                        plt.text(antPos[1]-3,antPos[2],str(ant),color='black')
+                    else:
+                        plt.text(antPos[1]-3,antPos[2],str(ant),color='white')
+            if plotMap is True:
+                plt.title(f'{polDirs[p]} pol, {lst} hours')
+                cbar = fig.colorbar(sm)
+                cbar.set_ticks([])
+    return ant_dfs, flaggedAnts
+
+def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts={},tempAnts={},crossedAnts=[],use_ants='auto'):
+    status_use = ['RF_ok','digital_ok','calibration_maintenance','calibration_ok','calibration_triage']
+    if use_ants == 'auto':
+        use_ants = uvd1.get_ants()
+    h = cm_active.ActiveData(at_date=jd)
+    h.load_apriori()
+    inspectAnts = []
+    for ant in use_ants:
+        status = h.apriori[f'HH{ant}:A'].status
+        if ant in badAnts or ant in flaggedAnts.keys() or ant in crossedAnts:
+            if status in status_use:
+                inspectAnts.append(ant)
+        for k in tempAnts.keys():
+            if ant in tempAnts[k] and status in status_use:
+                inspectAnts.append(ant)
+    inspectAnts = np.unique(inspectAnts)
+    inspectTitles = {}
+    for ant in inspectAnts:
+        inspectTitles[ant] = 'Flagged by: '
+        if ant in badAnts:
+            inspectTitles[ant] = f'{inspectTitles[ant]} correlation matrix,'
+        if ant in flaggedAnts.keys():
+            inspectTitles[ant] = f'{inspectTitles[ant]} ant_metrics,'
+        if ant in crossedAnts:
+            inspectTitles[ant] = f'{inspectTitles[ant]} cross matrix,'
+        try:
+            for k in tempAnts.keys():
+                if ant in tempAnts[k]:
+                    inspectTitles[ant] = f'{inspectTitles[ant]} template - {k},'
+        except:
+            continue
+        if inspectTitles[ant][-1] == ',':
+            inspectTitles[ant] = inspectTitles[ant][:-1]
+    print('Antennas that require further inspection are:')
+    print(inspectAnts)
+    
+    for ant in inspectAnts:
+        auto_waterfall_lineplot(uvd1,ant,jd,title=inspectTitles[ant])
+        
+    return inspectAnts
+
+
+def plot_closure(uvd, triad_length, pol):
+    """Plot closure phase for an example triad.
+    Parameters
+    ----------
+    files : list of strings
+        List of data filenames
+    triad_length : float {14., 29.}
+        Length of the triangle segment length. Must be 14 or 29.
+    pol : str {xx, yy}
+        Polarization to plot.
+    Returns
+    -------
+    None
+    
+    Function written by Lindsay Berkhout.
+    """
+
+
+    if triad_length == 14.:
+        triad_list = [[0, 11, 12], [0, 1, 12], [1, 12, 13], [1, 2, 13],
+                      [2, 13, 14], [11, 23, 24], [11, 12, 24], [12, 24, 25],
+                      [12, 13, 25], [13, 25, 26], [13, 14, 26], [14, 26, 27],
+                      [23, 36, 37], [23, 24, 37], [24, 37, 38], [24, 25, 38],
+                      [25, 38, 39], [25, 26, 39], [26, 39, 40], [26, 27, 40],
+                      [27, 40, 41], [36, 37, 51], [37, 51, 52], [37, 38, 52],
+                      [38, 52, 53], [38, 39, 53], [39, 53, 54], [39, 40, 54],
+                      [40, 54, 55], [40, 41, 55], [51, 66, 67], [51, 52, 67],
+                      [53, 54, 69], [54, 69, 70], [54, 55, 70], [55, 70, 71],
+                      [65, 66, 82], [66, 82, 83], [66, 67, 83], [67, 83, 84],
+                      [70, 71, 87], [120, 121, 140], [121, 140, 141], [121, 122, 141],
+                      [122, 141, 142], [122, 123, 142], [123, 142, 143], [123, 124, 143]]
+    else:
+        triad_list = [[0, 23, 25], [0, 2, 25], [1, 24, 26], [2, 25, 27], [11, 36, 38],
+                      [11, 13, 38], [12, 37, 39], [12, 14, 39], [13, 38, 40], [14, 39, 41],
+                      [23, 25, 52], [24, 51, 53], [24, 26, 53], [25, 52, 54], [25, 27, 54],
+                      [26, 53, 55], [36, 65, 67], [36, 38, 67], [38, 67, 69], [38, 40, 69],
+                      [39, 41, 70], [40, 69, 71], [51, 82, 84], [51, 53, 84], [52, 83, 85],
+                      [52, 54, 85], [54, 85, 87], [83, 85, 120], [85, 120, 122], [85, 87, 122],
+                      [87, 122, 124]]
+
+
+    # Look for a triad that exists in the data
+    for triad in triad_list:
+        bls = [[triad[0], triad[1]], [triad[1], triad[2]], [triad[2], triad[0]]]
+        triad_in = True
+        for bl in bls:
+            inds = uvd.antpair2ind(bl[0], bl[1], ordered=False)
+            if len(inds) == 0:
+                triad_in = False
+                break
+        if triad_in:
+            break
+
+    if not triad_in:
+        raise ValueError('Could not find triad in data.')
+
+    closure_ph = np.angle(uvd.get_data(triad[0], triad[1], pol)
+                          * uvd.get_data(triad[1], triad[2], pol)
+                          * uvd.get_data(triad[2], triad[0], pol))
+    plt.imshow(closure_ph, aspect='auto', rasterized=True,
+                           interpolation='nearest', cmap = 'twilight')
+
+#####################################################################################################################
+####################################################### END ########################################################
+#####################################################################################################################
+
+
+    
+# def calcEvenOddAmpMatrix(sm,df,pols=['xx','yy'],nodes='auto', badThresh=0.35, plotRatios=False):
+#     """
+#     Calculates a matrix of phase correlations between antennas, where each pixel is calculated as (even/abs(even)) * (conj(odd)/abs(odd)), and then averaged across time and frequency.
+    
+#     Paramters:
+#     ---------
+#     sm: UVData Object
+#         Sum observation.
+#     df: UVData Object
+#         Diff observation. Must be the same time of observation as sm. 
+#     pols: List
+#         Polarizations to plot. Can include any polarization strings accepted by pyuvdata.
+#     nodes: String or List
+#         Nodes to include in matrix. Default is 'auto', which generates a list of all nodes included in the provided data files. 
+#     badThresh: Float
+#         Threshold correlation metric value to use for flagging bad antennas.
+    
+#     Returns:
+#     -------
+#     data: Dict
+#         Dictionary containing calculated values, formatted as data[polarization][ant1,ant2]. 
+#     badAnts: List
+#         List of antennas that were flagged as bad based on badThresh.
+#     """
+#     if sm.time_array[0] != df.time_array[0]:
+#         print('FATAL ERROR: Sum and diff files are not from the same observation!')
+#         return None
+#     if nodes=='auto':
+#         nodeDict, antDict, inclNodes = generate_nodeDict(sm)
+#     nants = len(sm.get_ants())
+#     data = {}
+#     antnumsAll, _, _ = sort_antennas(sm)
+#     badAnts = []
+#     for p in range(len(pols)):
+#         pol = pols[p]
+#         data[pol] = np.empty((nants,nants))
+#         for i in range(len(antnumsAll)):
+#             thisAnt = []
+#             for j in range(len(antnumsAll)):
+#                 ant1 = antnumsAll[i]
+#                 ant2 = antnumsAll[j]
+#                 s = sm.get_data(ant1,ant2,pol)
+#                 d = df.get_data(ant1,ant2,pol)
+#                 even = (s + d)/2
+#                 even = np.divide(even,np.abs(even))
+#                 odd = (s - d)/2
+#                 odd = np.divide(odd,np.abs(odd))
+#                 product = np.multiply(even,np.conj(odd))
+#                 data[pol][i,j] = np.abs(np.nanmean(product))
+#                 thisAnt.append(np.abs(np.nanmean(product)))
+#             pgood = np.count_nonzero(~np.isnan(thisAnt))/len(thisAnt)
+#             if (np.nanmedian(thisAnt) < badThresh or pgood<0.2) and antnumsAll[i] not in badAnts:
+#                 if pol[0]==pol[1]:
+#                     #Don't assign bad ants based on cross pols
+#                     badAnts.append(antnumsAll[i])
+#     if plotRatios is True:
+#         if len(pols) == 4:
+#             data['xx-xy'] = np.subtract(data['xx'],data['xy'])
+#             data['xx-yx'] = np.subtract(data['xx'],data['yx'])
+#             data['yy-xy'] = np.subtract(data['yy'],data['xy'])
+#             data['yy-yx'] = np.subtract(data['yy'],data['yx'])
+#         else:
+#             print('Can only calculate differences if cross pols were specified')
+#         polAnts = {}
+#         badAnts = []
+#         subs = ['xx-xy','xx-yx','yy-xy','yy-yx']
+#         for k in subs:
+#             for i,ant in enumerate(antnumsAll):
+#                 dat = data[k][i,:]
+#                 if np.nanmedian(dat) < 0:
+#                     if ant in polAnts.keys():
+#                         polAnts[ant] = polAnts[ant] + 1
+#                     else:
+#                         polAnts[ant] = 1
+#                     if polAnts[ant] == 4:
+#                         badAnts.append(ant)
+#     return data, badAnts
+
+
+# def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logScale=False,plotRatios=False):
+#     """
+#     Plots a matrix representing the phase correlation of each baseline.
+    
+#     Parameters:
+#     ----------
+#     uv: UVData Object
+#         Observation used for calculating the correlation metric
+#     data: Dict
+#         Dictionary containing the correlation metric for each baseline and each polarization. Formatted as data[polarization]  [ant1,ant2] 
+#     pols: List
+#         Polarizations to plot. Can include any polarization strings accepted by pyuvdata.
+#     vminIn: float
+#         Lower limit of colorbar. Default is 0.
+#     vmaxIn: float
+#         Upper limit of colorbar. Default is 1.
+#     nodes: Dict
+#         Dictionary containing the nodes (and their constituent antennas) to include in the matrix. Formatted as nodes[Node #][Ant List, Snap # List, Snap Location List].
+#     logScale: Bool
+#         Option to put colormap on a logarithmic scale. Default is False.
+#     """
+#     if nodes=='auto':
+#         nodeDict, antDict, inclNodes = generate_nodeDict(uv)
+#     nantsTotal = len(uv.get_ants())
+#     power = np.empty((nantsTotal,nantsTotal))
+#     fig, axs = plt.subplots(2,2,figsize=(16,16))
+#     dirs = ['NN','EE','NE','EN']
+#     cmap='plasma'
+#     if plotRatios is True:
+#         pols = ['xx-xy','yy-xy','xx-yx','yy-yx']
+#         dirs=pols
+#         vminIn=-1
+#         cmap='seismic'
+#     loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
+#     jd = uv.time_array[0]
+#     t = Time(jd,format='jd',location=loc)
+#     lst = round(t.sidereal_time('mean').hour,2)
+#     t.format='fits'
+#     antnumsAll, _, _ = sort_antennas(uv)
+#     i = 0
+#     for p in range(len(pols)):
+#         if p >= 2:
+#             i=1
+#         pol = pols[p]
+#         nants = len(antnumsAll)
+#         if logScale is True:
+#             im = axs[i][p%2].imshow(data[pol],cmap=cmap,origin='upper',extent=[0.5,nantsTotal+.5,0.5,nantsTotal+0.5],norm=LogNorm(vmin=vminIn, vmax=vmaxIn))
+#         else:
+#             im = axs[i][p%2].imshow(data[pol],cmap=cmap,origin='upper',extent=[0.5,nantsTotal+.5,0.5,nantsTotal+0.5],vmin=vminIn, vmax=vmaxIn)
+#         axs[i][p%2].set_xticks(np.arange(0,nantsTotal)+1)
+#         axs[i][p%2].set_xticklabels(antnumsAll,rotation=90,fontsize=6)
+#         axs[i][p%2].xaxis.set_ticks_position('top')
+#         axs[i][p%2].set_title('polarization: ' + dirs[p] + '\n')
+#         n=0
+#         for node in sorted(inclNodes):
+#             n += len(nodeDict[node]['ants'])
+#             axs[i][p%2].axhline(len(antnumsAll)-n+.5,lw=4)
+#             axs[i][p%2].axvline(n+.5,lw=4)
+#             axs[i][p%2].text(n-len(nodeDict[node]['ants'])/2,-.5,node)
+#         axs[i][p%2].text(.42,-.05,'Node Number',transform=axs[i][p%2].transAxes)
+#     n=0
+#     for node in sorted(inclNodes):
+#         n += len(nodeDict[node]['ants'])
+#         axs[0][1].text(nantsTotal+1,nantsTotal-n+len(nodeDict[node]['ants'])/2,node)
+#         axs[1][1].text(nantsTotal+1,nantsTotal-n+len(nodeDict[node]['ants'])/2,node)
+#     axs[0][1].text(1.05,0.4,'Node Number',rotation=270,transform=axs[0][1].transAxes)
+#     axs[0][1].set_yticklabels([])
+#     axs[0][1].set_yticks([])
+#     axs[0][0].set_yticks(np.arange(nantsTotal,0,-1))
+#     axs[0][0].set_yticklabels(antnumsAll,fontsize=6)
+#     axs[0][0].set_ylabel('Antenna Number')
+#     axs[1][1].text(1.05,0.4,'Node Number',rotation=270,transform=axs[1][1].transAxes)
+#     axs[1][1].set_yticklabels([])
+#     axs[1][1].set_yticks([])
+#     axs[1][0].set_yticks(np.arange(nantsTotal,0,-1))
+#     axs[1][0].set_yticklabels(antnumsAll,fontsize=6)
+#     axs[1][0].set_ylabel('Antenna Number')
+#     cbar_ax = fig.add_axes([0.98,0.18,0.015,0.6])
+#     cbar_ax.set_xlabel('|V|', rotation=0)
+#     cbar = fig.colorbar(im, cax=cbar_ax)
+#     fig.suptitle('Correlation Matrix - JD: %s, LST: %.0fh' % (str(jd),np.round(lst,0)))
+#     fig.subplots_adjust(top=1.28,wspace=0.05,hspace=1.1)
+#     fig.tight_layout()
+#     plt.show()
+#     plt.close()
+    
+# def plot_single_matrix(uv,data,vminIn=0,vmaxIn=1,nodes='auto',logScale=False):
+#     if nodes=='auto':
+#         nodeDict, antDict, inclNodes = generate_nodeDict(uv)
+#     nantsTotal = len(uv.get_ants())
+#     power = np.empty((nantsTotal,nantsTotal))
+#     fig, axs = plt.subplots(1,1,figsize=(16,16))
+#     loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
+#     jd = uv.time_array[0]
+#     t = Time(jd,format='jd',location=loc)
+#     lst = round(t.sidereal_time('mean').hour,2)
+#     t.format='fits'
+#     antnumsAll, _, _ = sort_antennas(uv)
+#     nants = len(antnumsAll)
+#     if logScale is True:
+#         im = axs[0][0].imshow(data[pol],cmap='plasma',origin='upper',
+#                                 extent=[0.5,nantsTotal+.5,0.5,nantsTotal+0.5],norm=LogNorm(vmin=vminIn, vmax=vmaxIn))
+#     else:
+#         im = axs[0][0].imshow(data[pol],cmap='plasma',origin='upper',extent=
+#                                 [0.5,nantsTotal+.5,0.5,nantsTotal+0.5],vmin=vminIn, vmax=vmaxIn)
+#     axs[0][0].set_xticks(np.arange(0,nantsTotal)+1)
+#     axs[0][0].set_xticklabels(antnumsAll,rotation=90,fontsize=6)
+#     axs[0][0].xaxis.set_ticks_position('top')
+#     axs[0][0].set_title('polarization: ' + dirs[p] + '\n')
+#     n=0
+#     for node in sorted(inclNodes):
+#         n += len(nodeDict[node]['ants'])
+#         axs[0][0].axhline(len(antnumsAll)-n+.5,lw=4)
+#         axs[0][0].axvline(n+.5,lw=4)
+#         axs[0][0].text(n-len(nodeDict[node]['ants'])/2,-.5,node)
+#     axs[0][0].text(.42,-.05,'Node Number',transform=axs[0][0].transAxes)
+#     n=0
+#     for node in sorted(inclNodes):
+#         n += len(nodeDict[node]['ants'])
+#         axs[0][0].text(nantsTotal+1,nantsTotal-n+len(nodeDict[node]['ants'])/2,node)
+#     axs[0][0].text(1.05,0.4,'Node Number',rotation=270,transform=axs[0][0].transAxes)
+#     axs[0][0].set_yticks(np.arange(nantsTotal,0,-1))
+#     axs[0][0].set_yticklabels(antnumsAll,fontsize=6)
+#     axs[0][0].set_ylabel('Antenna Number')
+#     axs[0][0].text(1.05,0.4,'Node Number',rotation=270,transform=axs[0][0].transAxes)
+#     cbar_ax = fig.add_axes([0.98,0.18,0.015,0.6])
+#     cbar_ax.set_xlabel('|V|', rotation=0)
+#     cbar = fig.colorbar(im, cax=cbar_ax)
+#     fig.suptitle('Correlation Matrix - JD: %s, LST: %.0fh' % (str(jd),np.round(lst,0)))
+#     fig.subplots_adjust(top=1.28,wspace=0.05,hspace=1.1)
+#     fig.tight_layout()
+#     plt.show()
+#     plt.close()
+    
+
+
+
 
 def plot_crosses(uvd, ref_ant):
     ants = uvd.get_ants()
@@ -1784,7 +2100,7 @@ def plot_crosses(uvd, ref_ant):
     
     Nants = len(ants)
 #     Nside = int(np.ceil(np.sqrt(Nants)))*3
-    Nside = 4
+    Nside = 2
     Yside = int(np.ceil(float(Nants)/Nside))
     
     t_index = 0
@@ -1794,7 +2110,7 @@ def plot_crosses(uvd, ref_ant):
     xlim = (np.min(freqs), np.max(freqs))
     ylim = (60, 90)
 
-    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*2, Nside*60))
+    fig, axes = plt.subplots(Yside, Nside, figsize=(Yside*4, Nside*60))
 
     fig.suptitle("JD = {0}, time = {1} UTC".format(jd, utc), fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
@@ -1832,32 +2148,72 @@ def plot_crosses(uvd, ref_ant):
                 ax.set_xlabel('freq (MHz)', fontsize=10)
             k += 1
     fig.show()
-    plt.close()
+#     plt.close()
     
-def gather_source_list():
-    sources = []
-    sources.append((50.6750,-37.2083,'Fornax A'))
-    sources.append((201.3667,-43.0192,'Cen A'))
-    # sources.append((83.6333,22.0144,'Taurus A'))
-    sources.append((252.7833,4.9925,'Hercules A'))
-    sources.append((139.5250,-12.0947,'Hydra A'))
-    sources.append((79.9583,-45.7789,'Pictor A'))
-    sources.append((187.7042,12.3911,'Virgo A'))
-    sources.append((83.8208,-59.3897,'Orion A'))
-    sources.append((80.8958,-69.7561,'LMC'))
-    sources.append((13.1875,-72.8286,'SMC'))
-    sources.append((201.3667,-43.0192,'Cen A'))
-    sources.append((83.6333,20.0144,'Crab Pulsar'))
-    sources.append((128.8375,-45.1764,'Vela SNR'))
-    cat_path = f'{DATA_PATH}/G4Jy_catalog.tsv'
-    cat = open(cat_path)
-    f = csv.reader(cat,delimiter='\n')
-    for row in f:
-        if len(row)>0 and row[0][0]=='J':
-            s = row[0].split(';')
-            tup = (float(s[1]),float(s[2]),'')
-            sources.append(tup)
-    return sources
+
+#####################################################################################################################
+############################################### DELAY SPACE FUNCTIONS ###############################################
+#####################################################################################################################
+
+#This section of code was written mostly by Honggeun Kim and Alec Josaitis.
+
+def load_data_ds(data_path,JD):
+    """
+    Function to find all data files for a given night and read a small sample file.
+    
+    Parameters
+    ---------
+    data_path: String
+        Full path to the location of the data files.
+    JD: Int
+        JD of the observation.
+    
+    Returns
+    ---------
+    HHfiles: List
+        List of all *sum.uvh5 files.
+    difffiles
+    """
+    HHfiles = sorted(glob.glob("{0}/zen.{1}.*.sum.uvh5".format(data_path,JD)))
+    difffiles = [HHfile.split('sum')[0]+'diff.uvh5' for HHfile in HHfiles]
+    Nfiles = len(HHfiles)
+    hhfile_bases = map(os.path.basename, HHfiles)
+    hhdifffile_bases = map(os.path.basename, difffiles)
+    sep = '.'
+    x = sep.join(HHfiles[0].split('.')[-4:-2])
+    y = sep.join(HHfiles[-1].split('.')[-4:-2])
+    print(f'{len(HHfiles)} sum files found between JDs {x} and {y}')
+    x = sep.join(difffiles[0].split('.')[-4:-2])
+    y = sep.join(difffiles[-1].split('.')[-4:-2])
+    print(f'{len(difffiles)} diff files found between JDs {x} and {y}')
+
+    # choose one for single-file plots
+    hhfile1 = HHfiles[len(HHfiles)//2]
+    difffile1 = difffiles[len(difffiles)//2]
+    if len(HHfiles) != len(difffiles):
+        print('############################################################')
+        print('######### DIFFERENT NUMBER OF SUM AND DIFF FILES ###########')
+        print('############################################################')
+    # Load data
+    uvd_hh = UVData()
+
+    unread = True
+    while unread is True:
+        try:
+            uvd_hh.read(hhfile1, skip_bad_files=True)
+        except:
+            hhfile += 1
+            continue
+        unread = False
+    uvd_xx1 = uvd_hh.select(polarizations = -5, inplace = False)
+    uvd_xx1.ants = np.unique(np.concatenate([uvd_xx1.ant_1_array, uvd_xx1.ant_2_array]))
+    # -5: 'xx', -6: 'yy', -7: 'xy', -8: 'yx'
+
+    uvd_yy1 = uvd_hh.select(polarizations = -6, inplace = False)
+    uvd_yy1.ants = np.unique(np.concatenate([uvd_yy1.ant_1_array, uvd_yy1.ant_2_array]))
+
+   
+    return HHfiles, difffiles, uvd_xx1, uvd_yy1
     
 def _clean_per_bl_pol(bl, pol, uvd, uvd_diff, area, tol, skip_wgts, freq_range):
     """
@@ -1989,7 +2345,7 @@ def plot_wfds(uvd, _data_sq, pol):
     """
     nodes, antDict, inclNodes = generate_nodeDict(uvd)
     ants = uvd.get_ants()
-    sorted_ants = sort_antennas(uvd)
+    sorted_ants, _, _ = sort_antennas(uvd)
     freqs = uvd.freq_array[0]
     taus = np.fft.fftshift(np.fft.fftfreq(freqs.size, np.diff(freqs)[0]))*1e9
     times = uvd.time_array
@@ -2678,6 +3034,10 @@ def CorrMatrix_2700ns(uvd, HHfiles, difffiles, flagfile, JD, N_threads=12):
             amp[pol] = 10*np.log10(np.sqrt(np.nanmean(np.abs(_data_cleaned_sq[:,:,idx_region1]), axis=-1)/np.nanmean(np.abs(_data_cleaned_sq[:,:,idx_region2]), axis=-1)))
 
         plotCorrMatrix(uvd_data_ds, amp, pols=pols, nodes='auto', vminIn=0, vmaxIn=3)
+        
+#####################################################################################################################
+############################################# ANTENNA METRICS FUNCTIONS #############################################
+#####################################################################################################################
         
 def plot_metric(metrics, ants=None, antpols=None, title='', ylabel='Modified z-Score', xlabel=''):
     '''Helper function for quickly plotting an individual antenna metric.'''
