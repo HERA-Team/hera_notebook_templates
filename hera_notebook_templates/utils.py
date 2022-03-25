@@ -212,9 +212,13 @@ def detectWrongConnectionAnts(uvd,dtype='load'):
             spectrum = uvd.get_data(ant,ant,pol)
             stdev = np.std(spectrum)
             med = np.median(np.abs(spectrum))
-            if dtype is 'load' and 80000<stdev<=4000000 and med<=950000:
+#             if ant == 30:
+#                 print(stdev)
+#                 print(med)
+#                 print(np.min(np.abs(spectrum)))
+            if dtype is 'load' and 80000<stdev<=4000000:
                 antOk = True
-            elif dtype is 'digitalNoise' and stdev <= 80000:
+            elif dtype is 'noise' and stdev <= 80000:
                 antOk = True
             elif dtype is 'sky' and stdev > 2000000 and med > 950000:
                 antOk = True
@@ -552,7 +556,7 @@ def gather_source_list():
 ############################################## AUTOS PLOTTING FUNCTIONS #############################################
 #####################################################################################################################
 
-def plot_autos(uvdx, uvdy, wrongAnts=[], ylim = [55, 80],logscale=True,savefig=False,title=''):
+def plot_autos(uvdx, uvdy, wrongAnts=[], ylim = None,logscale=True,savefig=False,title='', dtype = 'sky'):
     """
     Function to plot autospectra of all antennas, with a row for each node, sorted by SNAP and within that by SNAP input. Spectra are chosen from a time in the middle of the observation.
     
@@ -599,7 +603,14 @@ def plot_autos(uvdx, uvdy, wrongAnts=[], ylim = [55, 80],logscale=True,savefig=F
 
     xlim = (np.min(freqs), np.max(freqs))
     
-
+    if ylim is None:
+        if dtype is 'sky':
+            ylim = [60,80]
+        elif dtype is 'load':
+            ylim = [55,75]
+        elif dtype is 'noise':
+            ylim = [75,75.2]
+    
     fig, axes = plt.subplots(Yside, Nside, figsize=(16,Yside*3))
 
     ptitle = 1.92/(Yside*3)
@@ -661,8 +672,8 @@ def plot_autos(uvdx, uvdy, wrongAnts=[], ylim = [55, 80],logscale=True,savefig=F
         plt.close()
     
 
-def plot_wfs(uvd, pol, mean_sub=False, savefig=False, vmin=6.5, vmax=8, vminSub=-0.07,
-             vmaxSub=0.07, wrongAnts=[], logscale=True,uvd_diff=None,metric=None,title='',dtype=None):
+def plot_wfs(uvd, pol, mean_sub=False, savefig=False, vmin=None, vmax=None, vminSub=None,
+             vmaxSub=None, wrongAnts=[], logscale=True,uvd_diff=None,metric=None,title='',dtype=None):
     """
     Function to plot auto waterfalls of all antennas, with a row for each node, sorted by SNAP and within that by SNAP input.
     
@@ -677,13 +688,13 @@ def plot_wfs(uvd, pol, mean_sub=False, savefig=False, vmin=6.5, vmax=8, vminSub=
     savefig: Boolean
         Option to write out the figure
     vmin: float
-        Colorbar minimum value when mean_sub is False.
+        Colorbar minimum value when mean_sub is False. Set to None to use default values, which vary depending on dtype.
     Vmax: float
-        Colorbar maximum value when mean_sub is False.
+        Colorbar maximum value when mean_sub is False. Set to None to use default values, which vary depending on dtype.
     vminSub: float
-        Colorbar minimum value when mean_sub is True
+        Colorbar minimum value when mean_sub is True. Set to None to use default values, which vary depending on dtype.
     vmaxSub: float
-        Colorbar maximum value when mean_sub is True.
+        Colorbar maximum value when mean_sub is True. Set to None to use default values, which vary depending on dtype.
     wrongAnts: List
         Optional, list of antennas that are identified as observing the wrong datatype (seeing the sky when we are trying to observe load, for example) or are severely broken/dead. These antennas will be greyed out and outlined in red.
     logscale: Boolean
@@ -713,12 +724,30 @@ def plot_wfs(uvd, pol, mean_sub=False, savefig=False, vmin=6.5, vmax=8, vminSub=
     lsts = [lsts[ind] for ind in sorted(inds)]
     maxants = 0
     polnames = ['xx','yy']
+    if dtype is 'sky':
+        vminAuto = 6.5
+        vmaxAuto = 8
+        vminSubAuto = -0.07
+        vmaxSubAuto = 0.07
     if dtype is 'load':
-        vmin = 5.5
-        vmax = 7.5
-    elif dtype is 'digitalNoise':
-        vmin=7.8055
-        vmax=7.8075
+        vminAuto = 5.5
+        vmaxAuto = 7.5
+        vminSubAuto = -0.04
+        vmaxSubAuto = 0.04
+    elif dtype is 'noise':
+        vminAuto=7.5
+        vmaxAuto=7.52
+        vminSubAuto = -0.0005
+        vmaxSubAuto = 0.0005
+    if vmin is None:
+        vmin = vminAuto
+    if vmax is None:
+        vmax = vmaxAuto
+    if vminSub is None:
+        vminSub = vminSubAuto
+    if vmaxSub is None:
+        vmaxSub = vmaxSubAuto
+        
     for node in nodes:
         n = len(nodes[node]['ants'])
         if n>maxants:

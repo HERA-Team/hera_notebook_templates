@@ -95,7 +95,7 @@ def getRandPercentage(data,percentage):
     return data, indices
 
 
-def getBlsByConnectionType(uvd,inc_autos=False):
+def getBlsByConnectionType(uvd,inc_autos=False,pols=['E','N']):
     """
     Simple helper function to generate a dictionary that categorizes baselines by connection type. Resulting dictionary makes it easy to extract data for all baselines of a given baseline type. 
     
@@ -105,6 +105,8 @@ def getBlsByConnectionType(uvd,inc_autos=False):
         Any sample UVData object, used to get antenna information only.
     inc_autos: Boolean
         Option to include autocorrelations in the intrasnap set. Default is False.
+    pols: List
+        List of polarizations to include. Can be ['E','N'], ['E'], or ['N'].
         
     Returns:
     ----------
@@ -112,7 +114,7 @@ def getBlsByConnectionType(uvd,inc_autos=False):
         Dictionary with keys 'internode', 'intranode', 'intrasnap', and 'autos', which reference lists of all baselines of that connection type. Baselines categorized as intranode will exclude those that are also intrasnap - to get all baselines within the same node, combine these two lists.
     """
     
-    nodes, antDict, inclNodes = generate_nodeDict_allPols(uvd)
+    nodes, antDict, inclNodes = utils.generate_nodeDict(uvd, pols=pols)
     bl_list = {'internode' : [], 'intranode' : [], 'intrasnap' : [], 'autos' : []}
     ants = uvd.get_ants()
     for a1 in ants:
@@ -133,6 +135,22 @@ def getBlsByConnectionType(uvd,inc_autos=False):
             else:
                 bl_list['internode'].append((a1,a2))
     return bl_list
+
+def getInternodeBls(antDict,use_ants=[]):
+    bls = []
+    for key1 in antDict.keys():
+        for key2 in antDict.keys():
+            a1 = int(key1[:-1])
+            a2 = int(key2[:-1])
+            n1 = antDict[key1]['node']
+            n2 = antDict[key2]['node']
+            if n1 != n2:
+                if len(use_ants)==0 or (a1 in use_ants and a2 in use_ants):
+                    if (a1,a2) in bls or (a2,a1) in bls:
+                        continue
+                    else:
+                        bls.append((a1,a2))
+    return bls
 
 #####################################################################################################################
 ########################################### VISIBILITY PLOTTING FUNCTIONS ###########################################
@@ -247,10 +265,46 @@ def plotCrossWaterfalls(uvd_sum, perBlSummary, percentile_set = [1,20,40,60,80,9
 
             
             
-def plotRealImag2DHists_byMetric(uvd_sum,uvd_diff=None,contour=False,savefig=False,title='',bl='all',metric=None,
-                                 conTypes=['all','internode','intranode','intrasnap','autos'], 
-                                 selectOnConnection=False,inc_autos=True,scale='auto',xlim=None,color='auto',
-                                 vmax=120, nbins=500):
+def plotRealImag2DHists_byMetric(uvd_sum,uvd_diff=None,contour=False,savefig=False,outfig='',bl='all',metric='sum',
+                                 conTypes=['all','internode','intranode','intrasnap','autos'], scale='auto', 
+                                 xlim=None, color='auto',vmax=120, nbins=500):
+    """
+    
+    Parameters:
+    ----------
+    uvd_sum: UVData Object
+        Sum visibility data.
+    uvd_diff: UVData Object
+        Diff visibility data. Required if metric is not set to 'sum'.
+    contour: Boolean
+        Option to overplot a contour on the 2D histograms.
+    savefig: Boolean
+        Option to write out the figure.
+    outfig: String
+        Full path to write out the figure.
+    bl: Tuple or 'all'
+        Specify a subset of baselines to use, formatted as [(antenna 1, antenna 2),...] or [(antenna 1, antenna 2, polarization),...] to select a single pol, or set to 'all' to include all baselines.
+    metric: String
+        Can be 'sum' to use sum visibilities, 'even' to use even visibilities, or 'odd' to use odd visibilities. If set to 'even' or 'odd', then uvd_diff must be provided.
+    conTypes: List
+        List of connection types to include in histogram. Can be any of 'all','internode','intranode','intrasnap', or 'autos'.
+    scale: String
+        Can be 'auto', 'fixed', or 'max'. If 'auto', the scale will be set by the 98th percentile of the data in each panel, and will therefore be a different scale for each panel. If 'fixed', the scale will be set by the xlim parameter for all panels. If 'max', the scale will be set by the max value in each panel, and again will be different for each panel.
+    xlim: float or None
+        The scale limit, formatted as (xmin, xmax), if the scale parameter is set to 'fixed'.
+    colorscale: String
+        Can be 'auto' to automatically scale the colorbar to the 99th percentile of the data, or 'manual' to use the vmax parameter to set the colorscale.
+    vmax: float
+        Maximum value of the colorbar if colorscale is set to 'manual'.
+    nbins: Int
+        Number of bins to use in the histogram. Default is 500.
+        
+    Returns:
+    ----------
+    None
+        
+    """
+    
     fig = plt.figure(figsize=(26,20))
     gs=gridspec.GridSpec(4,14, width_ratios=[4,0.2,0.5,4,0.2,0.5,4,0.2,0.5,4,0.2,0.5,4,0.2],wspace=0.2)
     freqInds = [(0,1535),(0,512),(512,1024),(1024,1535)]
@@ -267,12 +321,12 @@ def plotRealImag2DHists_byMetric(uvd_sum,uvd_diff=None,contour=False,savefig=Fal
             if uvd_diff is not None:
                 uvd2 = uvd_diff.select(bls=bl_list[met],inplace=False)
         else:
-            uvd = uvd_sum
-            uvd2 = uvd_diff
+            uvd = uvd_sum.copy()
+            uvd2 = uvd_diff.copy()
         for i,r in enumerate(freqInds):
             fmin = r[0]
             fmax = r[1]
-            if metric is None:
+            if metric is 'sum':
                 if bl=='all':
                     dat = uvd.data_array[:,:,fmin:fmax,:]
                 else:
@@ -316,7 +370,7 @@ def plotRealImag2DHists_byMetric(uvd_sum,uvd_diff=None,contour=False,savefig=Fal
             ax.axvline(0,color='r',linestyle='--')
             ax.axhline(0,color='r',linestyle='--')
             hist, xedges, yedges = np.histogram2d(x,y,bins=[x_bins,y_bins])
-            if color=='auto':
+            if colorscale=='auto':
                 vmax=np.percentile(hist,99)
                 if vmax<0.01:
                     vmax = np.max(hist)
@@ -336,8 +390,92 @@ def plotRealImag2DHists_byMetric(uvd_sum,uvd_diff=None,contour=False,savefig=Fal
             fig.colorbar(im,cax=ax)
 
     if savefig is True:
-        plt.savefig(f'{title}.jpeg',bbox_inches='tight')
+        plt.savefig(f'{outfig}.jpeg',bbox_inches='tight')
+        
+
+
             
+            
+def plotTimeDifferencedSumWaterfalls(files,nfiles=10,use_ants=[], uvd=None, polNum=0, savefig=False, outfig='', 
+                                     internodeOnly=True, norm='real', vmin=-1e4, vmax=1e4, colormap='viridis',startTimeInd=100):
+    """
+    Function to plot waterfalls with frequency on the x-axis and baseline number on the y-axis, where each panel shows the difference between adjacent time steps in the data. The purpose of this plot is to highlight temporal variability in the data, and show any relationship to baseline number.
+    
+    Parameters:
+    ----------
+    files: List
+        List of full paths to data files.
+    nfiles: Int
+        Number of files to use and produce plots for.
+    use_ants: List
+        List of antennas to use. If empty, all antennas will be used.
+    uvd: UVData Object
+        Optional, if provided this will be used rather than reading in new files from the files list. Saves time.
+    polNum: Int
+        Polarization index per pyuvdata data array format.
+    savefig: Boolean
+        Option to write out the figure.
+    outfig: String
+        Full path to write out the figure.
+    internodeOnly: Boolean
+        Option to use only internode baselines.
+    norm: String
+        Can be 'real', 'imag', or 'abs' to plot the real component, imaginary component, or absolute value of the visibilities, respectively.
+    vmin: float
+        Minimum colorbar value.
+    vmax: float
+        Maximum colorbar value.
+    colormap: String
+        Matplotlib colormap to use. Default is viridis.
+    startTimeInd:
+        Index of files list to take first file from. Last file will then have index startTimeInd + nfiles. Only used if uvd is not provided.
+        
+    Returns:
+    ----------
+    uvd: UVData Object
+        Data that was used in the plot.
+    sdiffs: numpy array
+        Time differenced visibilities.
+    """
+    
+    if uvd is None:
+        uvd = UVData()
+        if len(use_ants) == 0:
+            uvd.read(files[startTimeInd:startTimeInd+nfiles])
+        else:
+            uvd.read(files[startTimeInd:startTimeInd+nfiles],antenna_nums=use_ants)
+    if internodeOnly is True:
+        nodes, antDict, inclNodes = utils.generate_nodeDict(uvd,['E','N'])
+        internodeBls = getInternodeBls(antDict,use_ants=use_ants)
+        uvd.select(bls=internodeBls)
+    sdat = uvd.data_array[:,:,:,polNum]
+    sdat = np.reshape(sdat,(uvd.Nbls,-1,1536))
+    sdiffs = np.diff(sdat,1,1)
+    ntimes = np.shape(sdiffs)[1]
+    ncols = 3
+    nrows = int(np.ceil(ntimes/ncols))
+    fig, ax = plt.subplots(nrows,ncols,figsize=(20,6*nrows))
+    for i in range(ntimes):
+        if norm == 'real':
+            im = ax[i//3][i%3].imshow(np.real(sdiffs[:,i,:]),aspect='auto',vmin=vmin,vmax=vmax,
+                                      interpolation='nearest',cmap=colormap)
+        elif norm == 'imag':
+            im = ax[i//3][i%3].imshow(np.imag(sdiffs[:,i,:]),aspect='auto',vmin=vmin,vmax=vmax,
+                                      interpolation='nearest',cmap=colormap)
+        elif norm == 'abs':
+            im = ax[i//3][i%3].imshow(np.abs(sdiffs[:,i,:]),aspect='auto',vmin=vmin,vmax=vmax,
+                                      interpolation='nearest',cmap=colormap)
+        if i//3==2:
+            ax[i//3][i%3].set_xlabel('Frequency Bin')
+        if i%3==0:
+            ax[i//3][i%3].set_ylabel('Baseline #')
+        ax[i//3][i%3].set_title(f't{i+1}-t{i}')
+        if i%3==2:
+            fig.colorbar(im,ax=ax[i//3][i%3])
+    fig.suptitle(norm)
+    if savefig is True:
+        plt.savefig(outfig)
+    return uvd, sdiffs
 
 #####################################################################################################################
 ########################################## CORRELATION CALCULATION FUNCTIONS ########################################

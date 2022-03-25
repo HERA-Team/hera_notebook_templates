@@ -109,16 +109,21 @@ def makeCorrMatrices(HHfiles,use_ants,sm=None,df=None,nfilesUse=10,freq_inds=[],
         df.read(use_files_diff,antenna_nums=use_ants)
         
     
-
+    # Calculate real and imaginary correlation matrices
     corr_real, perBlSummary = calc_corr_metric(sm,df,norm='real',freq_inds=freq_inds,nanDiffs=nanDiffs,
                                               pols=pols,interleave=interleave)
     corr_imag,_ = calc_corr_metric(sm,df,norm='imag',freq_inds=freq_inds,nanDiffs=nanDiffs,
                                   pols=pols,interleave=interleave)
+    
+    # Plot matrix of real values
     plot_single_matrix(sm,corr_real,logScale=True,vminIn=0.01,suptitle='|Real|',
                        interleave=interleave)
+    # Plot matrix of imaginary values
     plot_single_matrix(sm,corr_imag,logScale=False,vminIn=-0.03,vmaxIn=0.03,
                                 cmap='bwr',suptitle='Imaginary',interleave=interleave)
+    # Plot matrix of real values on linlog color scale.
     plot_single_matrix(sm,corr_real,dataRef=corr_imag,linlog=True,vminIn=0.01,suptitle='Real',cmap='bwr')
+    
     return sm, df, corr_real, corr_imag, perBlSummary
 
 def calc_corr_metric(uvd_sum,uvd_diff,use_ants='all',norm='abs',freq_inds=[],time_inds=[],pols=['EE','NN','EN','NE'],
@@ -161,7 +166,7 @@ def calc_corr_metric(uvd_sum,uvd_diff,use_ants='all',norm='abs',freq_inds=[],tim
     
     if use_ants == 'all':
         use_ants = uvd_sum.get_ants()
-    useAnts,_,_ = sort_antennas(uvd_sum,use_ants,['N','E'])
+    useAnts,_,_ = utils.sort_antennas(uvd_sum,use_ants,['N','E'])
     antnums = [int(a[0:-1]) for a in useAnts]
     corr = np.zeros((len(useAnts),len(useAnts)))
     perBlSummary = {pol : {'all_vals' : [],
