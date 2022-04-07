@@ -5,5 +5,6 @@
 from . import version
 from . import utils
 from . import utils_h1c
+from . import utils_commissioning
 
 __version__ = version.version
