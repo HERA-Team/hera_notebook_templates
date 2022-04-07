@@ -146,23 +146,26 @@ def load_data(data_path,JD):
     hhfile_bases = map(os.path.basename, HHfiles)
     hhdifffile_bases = map(os.path.basename, difffiles)
     sep = '.'
-    x = sep.join(HHfiles[0].split('.')[-4:-2])
-    y = sep.join(HHfiles[-1].split('.')[-4:-2])
-    print(f'{len(HHfiles)} sum files found between JDs {x} and {y}')
-    x = sep.join(difffiles[0].split('.')[-4:-2])
-    y = sep.join(difffiles[-1].split('.')[-4:-2])
-    print(f'{len(difffiles)} diff files found between JDs {x} and {y}')
-    x = sep.join(HHautos[0].split('.')[-5:-3])
-    y = sep.join(HHautos[-1].split('.')[-5:-3])
-    print(f'{len(HHautos)} sum auto files found between JDs {x} and {y}')
-    x = sep.join(diffautos[0].split('.')[-5:-3])
-    y = sep.join(diffautos[-1].split('.')[-5:-3])
-    print(f'{len(diffautos)} diff auto files found between JDs {x} and {y}')
+    if len(HHfiles)>0:
+        x = sep.join(HHfiles[0].split('.')[-4:-2])
+        y = sep.join(HHfiles[-1].split('.')[-4:-2])
+        print(f'{len(HHfiles)} sum files found between JDs {x} and {y}')
+    if len(difffiles)>0:
+        x = sep.join(difffiles[0].split('.')[-4:-2])
+        y = sep.join(difffiles[-1].split('.')[-4:-2])
+        print(f'{len(difffiles)} diff files found between JDs {x} and {y}')
+    if len(HHautos)>0:
+        x = sep.join(HHautos[0].split('.')[-5:-3])
+        y = sep.join(HHautos[-1].split('.')[-5:-3])
+        print(f'{len(HHautos)} sum auto files found between JDs {x} and {y}')
+    if len(diffautos)>0:
+        x = sep.join(diffautos[0].split('.')[-5:-3])
+        y = sep.join(diffautos[-1].split('.')[-5:-3])
+        print(f'{len(diffautos)} diff auto files found between JDs {x} and {y}')
 
     # choose one for single-file plots
     hhfile1 = HHfiles[len(HHfiles)//2]
-    difffile1 = difffiles[len(difffiles)//2]
-    if len(HHfiles) != len(difffiles):
+    if len(HHfiles) != len(difffiles) and len(difffiles)>0:
         print('############################################################')
         print('######### DIFFERENT NUMBER OF SUM AND DIFF FILES ###########')
         print('############################################################')
@@ -770,9 +773,9 @@ def plot_wfs(uvd, pol, mean_sub=False, savefig=False, vmin=None, vmax=None, vmin
     else:
         suffix = metric
     if pol == 0:
-        fig.suptitle(f"North Polarization - {metric}", fontsize=14, y=1+ptitle)
+        fig.suptitle(f"North Polarization", fontsize=14, y=1+ptitle)
     else:
-        fig.suptitle(f"East Polarization - {metric}", fontsize=14, y=1+ptitle)
+        fig.suptitle(f"East Polarization", fontsize=14, y=1+ptitle)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.subplots_adjust(left=0, bottom=.1, right=.9, top=1, wspace=0.1, hspace=0.3)
 
@@ -846,7 +849,7 @@ def plot_wfs(uvd, pol, mean_sub=False, savefig=False, vmin=None, vmax=None, vmin
     plt.close()
 
 
-def auto_waterfall_lineplot(uv, ant, jd, vmin=1e6, vmax=1e8, title=''):
+def auto_waterfall_lineplot(uv, ant, jd, vmin=1e6, vmax=1e8, title='',size='large',savefig=False,outfig=''):
     """
     Function to plot an auto waterfall, with two lineplots underneath: one single spectrum from the middle of the observation, and one spectrum that is the average over the night.
     
@@ -854,8 +857,8 @@ def auto_waterfall_lineplot(uv, ant, jd, vmin=1e6, vmax=1e8, title=''):
     ---------
     uv: UVData Object
         Observation data.
-    ant: Int
-        Antenna number to plot, must be in the provided uv object.
+    ant: Int or Tuple
+        If a single integer, the antenna number to plot, must be in the provided uv object. If a tuple, the cross-correlation to plot, formatted as (antenna 1, antenna 2).
     jd: Int
         JD of the observation.
     vmin: Int
@@ -864,6 +867,12 @@ def auto_waterfall_lineplot(uv, ant, jd, vmin=1e6, vmax=1e8, title=''):
         Colorbar maximum value.
     title: String
         Plot title.
+    size: String
+        Option to determine the size of the resulting figure. Default is 'large', which makes the plot easiest to read. Use 'small' option if producing many these plots from another script to refrain from overloading the output.
+    savefig: Boolean
+        Option to write out the resulting figure.
+    outfig: String
+        Full path to write out the figure, if savefig is True.
         
     Returns:
     -------
@@ -872,18 +881,28 @@ def auto_waterfall_lineplot(uv, ant, jd, vmin=1e6, vmax=1e8, title=''):
     """
     h = cm_active.ActiveData(at_date=jd)
     h.load_apriori()
-    status = h.apriori[f'HH{ant}:A'].status
+    
     freq = uv.freq_array[0]*1e-6
-    fig = plt.figure(figsize=(12,8))
+    if size == 'large':
+        fig = plt.figure(figsize=(22,10))
+    else:
+        fig = plt.figure(figsize=(12,8))
     gs = gridspec.GridSpec(3, 2, height_ratios=[2,0.7,1])
     it = 0
-    pols=['xx','yy'],
+    pols=['xx','yy']
     pol_dirs = ['NN','EE']
     for p,pol in enumerate(pols):
         waterfall= plt.subplot(gs[it])
         jd_ax=plt.gca()
         times= np.unique(uv.time_array)
-        d = np.abs(uv.get_data((ant,ant, pol)))
+        if type(ant) is int:
+            d = np.abs(uv.get_data((ant,ant, pol)))
+            averaged_data= np.abs(np.average(uv.get_data((ant,ant,pol)),0))
+            dat = uv.get_data((ant,ant,pol))
+        else:
+            d = np.abs(uv.get_data((ant[0],ant[1], pol)))
+            averaged_data= np.abs(np.average(uv.get_data((ant[0],ant[1],pol)),0))
+            dat = uv.get_data((ant[0],ant[1],pol))
         if len(np.nonzero(d)[0])==0:
             print('#########################################')
             print(f'Data for antenna {ant} is entirely zeros')
@@ -891,7 +910,12 @@ def auto_waterfall_lineplot(uv, ant, jd, vmin=1e6, vmax=1e8, title=''):
             plt.close()
             return
         im = plt.imshow(d,norm=colors.LogNorm(),aspect='auto',vmin=vmin,vmax=vmax)
-        abb = status_abbreviations[status]
+        if type(ant) is int:
+            status = h.apriori[f'HH{ant}:A'].status
+            abb = status_abbreviations[status]
+        else:
+            status = [h.apriori[f'HH{ant[0]}:A'].status,h.apriori[f'HH{ant[1]}:A'].status]
+            abb = [status_abbreviations[s] for s in status]
         waterfall.set_title(f'{pol_dirs[p]} pol')
         freqs = uv.freq_array[0, :] / 1000000
         xticks = np.arange(0, len(freqs), 120)
@@ -917,7 +941,6 @@ def auto_waterfall_lineplot(uv, ant, jd, vmin=1e6, vmax=1e8, title=''):
             lst_ax.autoscale(False)
             jd_ax.set_yticks([])
         line= plt.subplot(gs[it+2])
-        averaged_data= np.abs(np.average(uv.get_data((ant,ant,pol)),0))
         plt.plot(freq,averaged_data)
         line.set_yscale('log')
         if p == 0:
@@ -928,7 +951,6 @@ def auto_waterfall_lineplot(uv, ant, jd, vmin=1e6, vmax=1e8, title=''):
         line.set_xticks([])
         
         line2 = plt.subplot(gs[it+4])
-        dat = uv.get_data((ant,ant,pol))
         dat = np.abs(dat[len(dat)//2,:])
         plt.plot(freq,dat)
         line2.set_yscale('log')
@@ -941,10 +963,17 @@ def auto_waterfall_lineplot(uv, ant, jd, vmin=1e6, vmax=1e8, title=''):
         
         plt.setp(waterfall.get_xticklabels(), visible=False)
         plt.subplots_adjust(hspace=.0)
-        cbar = plt.colorbar(im, pad= 0.2, orientation = 'horizontal')
+        cbar = plt.colorbar(im, pad= 0.25, orientation = 'horizontal')
         cbar.set_label('Power')
         it=1
-    fig.suptitle(f'{ant} ({abb})', fontsize=10, backgroundcolor=status_colors[status],y=0.96)
+    if size == 'small':
+        fontsize=10
+    elif size == 'large':
+        fontsize=20
+    if type(ant) is int:
+        fig.suptitle(f'{ant} ({abb})', fontsize=fontsize, backgroundcolor=status_colors[status],y=0.96)
+    else:
+        fig.suptitle(f'{ant[0]} ({abb[0]}), {ant[1]} ({abb[1]})', fontsize=fontsize,y=0.96)
     plt.annotate(title, xy=(0.5,0.94), ha='center',xycoords='figure fraction')
     plt.show()
     plt.close()
@@ -1831,7 +1860,7 @@ def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts={},tempAnts={},crossedAnts=
     print(inspectAnts)
     
     for ant in inspectAnts:
-        auto_waterfall_lineplot(uvd1,ant,jd,title=inspectTitles[ant])
+        auto_waterfall_lineplot(uvd1,ant,jd,title=inspectTitles[ant],size='small')
         
     return inspectAnts
 
@@ -2218,7 +2247,6 @@ def load_data_ds(data_path,JD):
 
     # choose one for single-file plots
     hhfile1 = HHfiles[len(HHfiles)//2]
-    difffile1 = difffiles[len(difffiles)//2]
     if len(HHfiles) != len(difffiles):
         print('############################################################')
         print('######### DIFFERENT NUMBER OF SUM AND DIFF FILES ###########')
