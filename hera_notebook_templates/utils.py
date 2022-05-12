@@ -52,7 +52,8 @@ status_colors = {
     'digital_ok' : 'mediumpurple',
     'calibration_maintenance' : 'lightgreen',
     'calibration_ok' : 'green',
-    'calibration_triage' : 'lime'}
+    'calibration_triage' : 'lime',
+    'not_connected' : 'gray'}
 status_abbreviations = {
     'dish_maintenance' : 'dish-M',
     'dish_ok' : 'dish-OK',
@@ -62,7 +63,8 @@ status_abbreviations = {
     'digital_ok' : 'dig-OK',
     'calibration_maintenance' : 'cal-M',
     'calibration_ok' : 'cal-OK',
-    'calibration_triage' : 'cal-Tri'}
+    'calibration_triage' : 'cal-Tri',
+    'not_connected' : 'No-Con'}
 
 
 def get_use_ants(uvd,statuses,jd):
@@ -77,6 +79,8 @@ def get_use_ants(uvd,statuses,jd):
             status = h.apriori[ant_name].status
             if status in statuses:
                 use_ants.append(ant)
+#             else:
+#                 print(f'{ant} - {status}')
     return use_ants
 
 def read_template(pol='XX'):
@@ -552,7 +556,7 @@ def plot_autos(uvdx, uvdy):
     plt.show()
     plt.close()
     
-def plot_wfs(uvd, pol, mean_sub=False, save=False, jd=''):
+def plot_wfs(uvd, pol, mean_sub=False, save=False, jd='',auto_scale=True,vmin=6.5,vmax=8):
     amps = np.abs(uvd.data_array[:, :, :, pol].reshape(uvd.Ntimes, uvd.Nants_data, uvd.Nfreqs, 1))
     nodes, antDict, inclNodes = generate_nodeDict(uvd)
     ants = uvd.get_ants()
@@ -587,8 +591,10 @@ def plot_wfs(uvd, pol, mean_sub=False, save=False, jd=''):
         fig.suptitle("East Polarization", fontsize=14, y=1+ptitle)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.subplots_adjust(left=0, bottom=.1, right=.9, top=1, wspace=0.1, hspace=0.3)
-    vmin = 6.5
-    vmax = 8
+    if auto_scale:
+        med = np.nanmedian(np.log10(abs(uvd.data_array)))
+        vmin = med - 0.75
+        vmax = med + 0.75
 
     for i,n in enumerate(inclNodes):
         ants = nodes[n]['ants']
@@ -915,7 +921,7 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
     plt.show()
     plt.close()
     
-def plot_antenna_positions(uv, badAnts={},flaggedAnts={},use_ants='auto'):
+def plot_antenna_positions(uv, badAnts={},flaggedAnts={},use_ants='auto',includeOutriggers=False):
     """
     Plots the positions of all antennas that have data, colored by node.
     
@@ -927,6 +933,9 @@ def plot_antenna_positions(uv, badAnts={},flaggedAnts={},use_ants='auto'):
         A list of flagged or bad antennas. These will be outlined in black in the plot. 
     flaggedAnts: Dict
         A dict of antennas flagged by ant_metrics with value corresponding to color in ant_metrics plot
+    includeOutriggers: Boolean
+        Option to include outriggers in the antenna map. Doing so will significantly decrease resolution on the primary
+        hex antennas.
     """
     
     plt.figure(figsize=(12,10))
@@ -959,7 +968,18 @@ def plot_antenna_positions(uv, badAnts={},flaggedAnts={},use_ants='auto'):
                 try:
                     this_ant = ants[station]
                 except KeyError:
-                    continue
+                    if includeOutriggers:
+                        try:
+                            station = 'HA{}'.format(a)
+                            this_ant = ants[station]
+                        except KeyError:
+                            try:
+                                station = 'HB{}'.format(a)
+                                this_ant = ants[station]
+                            except KeyError:
+                                continue
+                    else:
+                        continue
                 x = this_ant['E']
                 y = this_ant['N']
                 if a in use_ants:
@@ -1209,9 +1229,10 @@ def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logSc
     """
     if nodes=='auto':
         nodeDict, antDict, inclNodes = generate_nodeDict(uv)
-    nantsTotal = len(uv.get_ants())
+    antnumsAll = sort_antennas(uv)
+    nantsTotal = len(antnumsAll)
     power = np.empty((nantsTotal,nantsTotal))
-    fig, axs = plt.subplots(2,2,figsize=(16,16))
+    fig, axs = plt.subplots(2,2,figsize=(20,20))
     dirs = ['NN','EE','NE','EN']
     cmap='plasma'
     if plotRatios is True:
@@ -1224,7 +1245,6 @@ def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logSc
     t = Time(jd,format='jd',location=loc)
     lst = round(t.sidereal_time('mean').hour,2)
     t.format='fits'
-    antnumsAll = sort_antennas(uv)
     i = 0
     for p in range(len(pols)):
         if p >= 2:
@@ -1244,7 +1264,7 @@ def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logSc
             n += len(nodeDict[node]['ants'])
             axs[i][p%2].axhline(len(antnumsAll)-n+.5,lw=4)
             axs[i][p%2].axvline(n+.5,lw=4)
-            axs[i][p%2].text(n-len(nodeDict[node]['ants'])/2,-.5,node)
+            axs[i][p%2].text(n-len(nodeDict[node]['ants'])/2,-1.2,node)
         axs[i][p%2].text(.42,-.05,'Node Number',transform=axs[i][p%2].transAxes)
     n=0
     for node in sorted(inclNodes):
@@ -1268,7 +1288,7 @@ def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logSc
     cbar = fig.colorbar(im, cax=cbar_ax)
     fig.suptitle('Correlation Matrix - JD: %s, LST: %.0fh' % (str(jd),np.round(lst,0)))
     fig.subplots_adjust(top=1.28,wspace=0.05,hspace=1.1)
-    fig.tight_layout()
+    plt.tight_layout()
     plt.show()
     plt.close()
     
@@ -1681,6 +1701,53 @@ def get_baseline_type(uv,bl_type=(14,0,'14m E-W'),use_ants='auto'):
                     return bl
     return None
 
+# def generate_nodeDict(uv):
+#     """
+#     Generates dictionaries containing node and antenna information.
+    
+#     Parameters:
+#     ----------
+#     uv: UVData Object
+#         Sample observation to extract node and antenna information from.
+    
+#     Returns:
+#     -------
+#     nodes: Dict
+#         Dictionary containing entry for all nodes, each of which has keys: 'ants', 'snapLocs', 'snapInput'.
+#     antDict: Dict
+#         Dictionary containing entry for all antennas, each of which has keys: 'node', 'snapLocs', 'snapInput'.
+#     inclNodes: List
+#         Nodes that have hooked up antennas.
+#     """
+    
+#     antnums = uv.get_ants()
+#     h = cm_hookup.Hookup()
+#     x = h.get_hookup('HH')
+#     nodes = {}
+#     antDict = {}
+#     inclNodes = []
+#     for ant in antnums:
+#         key = 'HH%i:A' % (ant)
+#         n = x[key].get_part_from_type('node')['E<ground'][1:]
+#         snapLoc = (x[key].hookup['E<ground'][-1].downstream_input_port[-1], ant)
+#         snapInput = (x[key].hookup['E<ground'][-2].downstream_input_port[1:], ant)
+#         antDict[ant] = {}
+#         antDict[ant]['node'] = str(n)
+#         antDict[ant]['snapLocs'] = snapLoc
+#         antDict[ant]['snapInput'] = snapInput
+#         inclNodes.append(n)
+#         if n in nodes:
+#             nodes[n]['ants'].append(ant)
+#             nodes[n]['snapLocs'].append(snapLoc)
+#             nodes[n]['snapInput'].append(snapInput)
+#         else:
+#             nodes[n] = {}
+#             nodes[n]['ants'] = [ant]
+#             nodes[n]['snapLocs'] = [snapLoc]
+#             nodes[n]['snapInput'] = [snapInput]
+#     inclNodes = np.unique(inclNodes)
+#     return nodes, antDict, inclNodes
+
 def generate_nodeDict(uv):
     """
     Generates dictionaries containing node and antenna information.
@@ -1706,21 +1773,32 @@ def generate_nodeDict(uv):
     nodes = {}
     antDict = {}
     inclNodes = []
-    for ant in antnums:
-        key = 'HH%i:A' % (ant)
-        n = x[key].get_part_from_type('node')['E<ground'][1:]
-        snapLoc = (x[key].hookup['E<ground'][-1].downstream_input_port[-1], ant)
-        snapInput = (x[key].hookup['E<ground'][-2].downstream_input_port[1:], ant)
+    for key in x.keys():
+        ant = int(key.split(':')[0][2:])
+        if ant not in antnums:
+            continue
+        if x[key].get_part_from_type('node')['E<ground'] == None:
+            n = None
+            snapLoc = None
+            snapInput = None
+        else:
+            n = x[key].get_part_from_type('node')['E<ground'][1:]
+            snapLoc = (x[key].hookup['E<ground'][-1].downstream_input_port[-1], ant)
+            snapInput = (x[key].hookup['E<ground'][-2].downstream_input_port[1:], ant)
         antDict[ant] = {}
-        antDict[ant]['node'] = str(n)
+        if n == None:
+            antDict[ant]['node'] = None
+        else:
+            antDict[ant]['node'] = str(n)
         antDict[ant]['snapLocs'] = snapLoc
         antDict[ant]['snapInput'] = snapInput
-        inclNodes.append(n)
+        if n != None:
+            inclNodes.append(n)
         if n in nodes:
             nodes[n]['ants'].append(ant)
             nodes[n]['snapLocs'].append(snapLoc)
             nodes[n]['snapInput'].append(snapInput)
-        else:
+        elif n!=None:
             nodes[n] = {}
             nodes[n]['ants'] = [ant]
             nodes[n]['snapLocs'] = [snapLoc]
