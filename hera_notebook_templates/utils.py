@@ -79,8 +79,6 @@ def get_use_ants(uvd,statuses,jd):
             status = h.apriori[ant_name].status
             if status in statuses:
                 use_ants.append(ant)
-#             else:
-#                 print(f'{ant} - {status}')
     return use_ants
 
 def read_template(pol='XX'):
@@ -104,7 +102,6 @@ def flag_by_template(uvd,HHfiles,jd,use_ants='auto',pols=['XX','YY'],polDirs=['N
         use_ants = uvd.get_ants()
     flaggedAnts = {polDirs[0]: [], polDirs[1]: []}
     for i,lst in enumerate(use_lsts):
-#         print(lst)
         hdat = UVData()
         hdat.read(use_files[i],antenna_nums=use_ants)
         for p,pol in enumerate(pols):
@@ -374,7 +371,7 @@ def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts={},tempAnts={},crossedAnts=
     h.load_apriori()
     inspectAnts = []
     for ant in use_ants:
-        status = h.apriori[f'HH{ant}:A'].status
+        status = get_ant_status(ant,jd)
         if ant in badAnts or ant in flaggedAnts.keys() or ant in crossedAnts:
             if status in status_use:
                 inspectAnts.append(ant)
@@ -406,11 +403,23 @@ def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts={},tempAnts={},crossedAnts=
         auto_waterfall_lineplot(uvd1,ant,jd,title=inspectTitles[ant])
         
     return inspectAnts
-    
-def auto_waterfall_lineplot(uv, ant, jd, pols=['xx','yy'], colorbar_min=1e6, colorbar_max=1e8, title=''):
+
+def get_ant_status(ant,jd):
     h = cm_active.ActiveData(at_date=jd)
     h.load_apriori()
-    status = h.apriori[f'HH{ant}:A'].status
+    if f'HH{ant}:A' in h.apriori.keys():
+        key = f'HH{ant}:A'
+    elif f'HA{ant}:A' in h.apriori.keys():
+        key = f'HA{ant}:A'
+    elif f'HB{ant}:A' in h.apriori.keys():
+        key = f'HB{ant}:A'
+    else:
+        print(f'############## Error: antenna {ant} not included in apriori status table ##############')
+    status = h.apriori[key].status
+    return status
+    
+def auto_waterfall_lineplot(uv, ant, jd, pols=['xx','yy'], colorbar_min=1e6, colorbar_max=1e8, title=''):
+    status = get_ant_status(ant,jd)
     freq = uv.freq_array[0]*1e-6
     fig = plt.figure(figsize=(12,8))
     gs = gridspec.GridSpec(3, 2, height_ratios=[2,0.7,1])
@@ -527,7 +536,7 @@ def plot_autos(uvdx, uvdy):
         for _,a in enumerate(sorted_ants):
             if a not in ants:
                 continue
-            status = h.apriori[f'HH{a}:A'].status
+            status = get_ant_status(a,jd)
             ax = axes[i,j]
             ax.set_xlim(xlim)
             ax.set_ylim(ylim)
@@ -602,7 +611,7 @@ def plot_wfs(uvd, pol, mean_sub=False, save=False, jd='',auto_scale=True,vmin=6.
         for _,a in enumerate(sorted_ants):
             if a not in ants:
                 continue
-            status = h.apriori[f'HH{a}:A'].status
+            status = get_ant_status(a,jd)
             abb = status_abbreviations[status]
             ax = axes[i,j]
             dat = np.log10(np.abs(uvd.get_data(a,a,polnames[pol])))
@@ -665,7 +674,7 @@ def plot_mean_subtracted_wfs(uvd, use_ants, jd, pols=['xx','yy']):
     fig.subplots_adjust(left=.1, bottom=.1, right=.85, top=.975, wspace=0.05, hspace=0.2)
 
     for i,ant in enumerate(ants):
-        status = h.apriori[f'HH{ant}:A'].status
+        status = get_ant_status(ant,jd)
         abb = status_abbreviations[status]
         color = status_colors[status]
         for j,pol in enumerate(pols):
@@ -1701,53 +1710,6 @@ def get_baseline_type(uv,bl_type=(14,0,'14m E-W'),use_ants='auto'):
                     return bl
     return None
 
-# def generate_nodeDict(uv):
-#     """
-#     Generates dictionaries containing node and antenna information.
-    
-#     Parameters:
-#     ----------
-#     uv: UVData Object
-#         Sample observation to extract node and antenna information from.
-    
-#     Returns:
-#     -------
-#     nodes: Dict
-#         Dictionary containing entry for all nodes, each of which has keys: 'ants', 'snapLocs', 'snapInput'.
-#     antDict: Dict
-#         Dictionary containing entry for all antennas, each of which has keys: 'node', 'snapLocs', 'snapInput'.
-#     inclNodes: List
-#         Nodes that have hooked up antennas.
-#     """
-    
-#     antnums = uv.get_ants()
-#     h = cm_hookup.Hookup()
-#     x = h.get_hookup('HH')
-#     nodes = {}
-#     antDict = {}
-#     inclNodes = []
-#     for ant in antnums:
-#         key = 'HH%i:A' % (ant)
-#         n = x[key].get_part_from_type('node')['E<ground'][1:]
-#         snapLoc = (x[key].hookup['E<ground'][-1].downstream_input_port[-1], ant)
-#         snapInput = (x[key].hookup['E<ground'][-2].downstream_input_port[1:], ant)
-#         antDict[ant] = {}
-#         antDict[ant]['node'] = str(n)
-#         antDict[ant]['snapLocs'] = snapLoc
-#         antDict[ant]['snapInput'] = snapInput
-#         inclNodes.append(n)
-#         if n in nodes:
-#             nodes[n]['ants'].append(ant)
-#             nodes[n]['snapLocs'].append(snapLoc)
-#             nodes[n]['snapInput'].append(snapInput)
-#         else:
-#             nodes[n] = {}
-#             nodes[n]['ants'] = [ant]
-#             nodes[n]['snapLocs'] = [snapLoc]
-#             nodes[n]['snapInput'] = [snapInput]
-#     inclNodes = np.unique(inclNodes)
-#     return nodes, antDict, inclNodes
-
 def generate_nodeDict(uv):
     """
     Generates dictionaries containing node and antenna information.
@@ -2138,7 +2100,7 @@ def plot_wfds(uvd, _data_sq, pol):
         for _,a in enumerate(sorted_ants):
             if a not in ants:
                 continue
-            status = h.apriori[f'HH{a}:A'].status
+            status = get_ant_status(a,jd)
             abb = status_abbreviations[status]
             ax = axes[i,j]
             key = (a, a, polnames[pol])
@@ -2173,9 +2135,6 @@ def plot_wfds(uvd, _data_sq, pol):
         cbar_ax = fig.add_axes([0.91,pos.y0,0.01,pos.height])
         cbar = fig.colorbar(im, cax=cbar_ax, ticks=[-50, -45, -40, -35, -30])
         cbar.set_label(f'Node {n}',rotation=270, labelpad=15)
-#         cbarticks = [np.around(x,1) for x in np.linspace(vmin,vmax,7)[i] for i in cbar.get_ticks()]
-#         cbar.set_ticklabels(cbarticks)
-#         axes[i,maxants-1].annotate(f'Node {n}', (.97,pos.y0+.03),xycoords='figure fraction',rotation=270)
     fig.show()
 
 def plot_antFeatureMap_2700ns(uvd, _data_sq, JD, pol='ee'):
