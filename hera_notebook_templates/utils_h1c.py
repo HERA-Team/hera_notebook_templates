@@ -19,7 +19,6 @@ from astropy.coordinates import SkyCoord as sc
 import pandas
 import warnings 
 import copy
-from hera_mc import cm_hookup, geo_sysdef
 import math
 from uvtools import dspec
 import hera_qm 
@@ -221,8 +220,7 @@ def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts={},tempAnts={},crossedAnts=
 #     status_use = ['RF_ok','digital_ok','calibration_maintenance','calibration_ok','calibration_triage']
     if use_ants == 'auto':
         use_ants = uvd1.get_ants()
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
+    h = cm_active.get_active(at_date=jd, float_format="jd")
     inspectAnts = []
     for ant in use_ants:
 #         status = h.apriori[f'HH{ant}:A'].status
@@ -540,8 +538,7 @@ def plot_mean_subtracted_wfs(uvd, use_ants, jd, pols=['xx','yy']):
 #         'calibration_maintenance' : 'cal-M',
 #         'calibration_ok' : 'cal-OK',
 #         'calibration_triage' : 'cal-Tri'}
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
+    h = cm_active.get_active(at_date=jd, float_format="jd")
     
     fig, axes = plt.subplots(Nants, 2, figsize=(7,Nants*2.2))
     fig.suptitle('Mean Subtracted Waterfalls')

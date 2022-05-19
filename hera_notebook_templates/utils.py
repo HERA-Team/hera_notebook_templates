@@ -2,44 +2,51 @@
 # Copyright 2020 the HERA Project
 # Licensed under the MIT License
 
-import matplotlib
-import matplotlib.pyplot as plt
-from matplotlib.ticker import FormatStrFormatter
-import matplotlib.patches as mpatches
-import matplotlib.gridspec as gridspec
-import numpy as np
-from pyuvdata import UVCal, UVData, UVFlag, utils
 import os
 import sys
 import glob
-import uvtools as uvt
+import warnings 
+import copy
+import math
+import json
+import csv
+from multiprocessing import Process, Queue
+
+import numpy as np
+import pandas
+import healpy
+import scipy
+from pyuvdata import UVCal, UVData, UVFlag, utils
+
 from astropy.time import Time
 from astropy.coordinates import EarthLocation, AltAz, Angle
 from astropy.coordinates import SkyCoord as sc
-import pandas
-import warnings 
-import copy
-from hera_mc import cm_hookup, geo_sysdef
-import math
-from uvtools import dspec
-import hera_qm 
-from hera_mc import cm_active
-from matplotlib.lines import Line2D
-from matplotlib import colors
-import json
-from hera_notebook_templates.data import DATA_PATH
 from astropy.io import fits
-import csv
 from astropy import units as u
 from astropy_healpix import HEALPix
 from astropy.coordinates import Galactic
-import healpy
-from multiprocessing import Process, Queue
+
 from bokeh.layouts import row, column
 from bokeh.models import CustomJS, Select, RadioButtonGroup, Range1d
 from bokeh.plotting import figure, output_file, show, ColumnDataSource
 from bokeh.io import output_notebook
-import scipy
+
+import matplotlib
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import matplotlib.gridspec as gridspec
+from matplotlib.ticker import FormatStrFormatter
+from matplotlib.lines import Line2D
+from matplotlib import colors
+
+import hera_qm
+from hera_mc import cm_hookup, geo_sysdef
+from hera_mc import cm_active
+import uvtools as uvt
+from uvtools import dspec
+
+from hera_notebook_templates.data import DATA_PATH
+
 warnings.filterwarnings('ignore')
 
 # useful global variables
@@ -71,8 +78,7 @@ def get_use_ants(uvd,statuses,jd):
     statuses = statuses.split(',')
     ants = np.unique(np.concatenate((uvd.ant_1_array, uvd.ant_2_array)))
     use_ants = []
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
+    h = cm_active.get_active(at_date=jd, float_format="jd")
     for ant_name in h.apriori:
         ant = int("".join(filter(str.isdigit, ant_name)))
         if ant in ants:
@@ -367,8 +373,7 @@ def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts={},tempAnts={},crossedAnts=
     status_use = ['RF_ok','digital_ok','calibration_maintenance','calibration_ok','calibration_triage']
     if use_ants == 'auto':
         use_ants = uvd1.get_ants()
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
+    h = cm_active.get_active(at_date=jd, float_format="jd")
     inspectAnts = []
     for ant in use_ants:
         status = get_ant_status(ant,jd)
@@ -405,8 +410,7 @@ def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts={},tempAnts={},crossedAnts=
     return inspectAnts
 
 def get_ant_status(ant,jd):
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
+    h = cm_active.get_active(at_date=jd, float_format="jd")
     if f'HH{ant}:A' in h.apriori.keys():
         key = f'HH{ant}:A'
     elif f'HA{ant}:A' in h.apriori.keys():
@@ -517,8 +521,7 @@ def plot_autos(uvdx, uvdy):
     jd = times[t_index]
     utc = Time(jd, format='jd').datetime
     
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
+    h = cm_active.get_active(at_date=jd, float_format="jd")
 
     xlim = (np.min(freqs), np.max(freqs))
     ylim = (55, 85)
@@ -590,8 +593,7 @@ def plot_wfs(uvd, pol, mean_sub=False, save=False, jd='',auto_scale=True,vmin=6.
     jd = times[t_index]
     utc = Time(jd, format='jd').datetime
     
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
+    h = cm_active.get_active(at_date=jd, float_format="jd")
     ptitle = 1.92/(Yside*3)
     fig, axes = plt.subplots(Yside, Nside, figsize=(16,Yside*3))
     if pol == 0:
@@ -664,10 +666,9 @@ def plot_mean_subtracted_wfs(uvd, use_ants, jd, pols=['xx','yy']):
     ants = sorted(use_ants)
     Nants = len(ants) 
     pol_labels = ['NN','EE']
-    
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
-    
+
+    h = cm_active.get_active(at_date=jd, float_format="jd")
+
     fig, axes = plt.subplots(Nants, 2, figsize=(7,Nants*2.2))
     fig.suptitle('Mean Subtracted Waterfalls')
     fig.tight_layout(rect=(0, 0, 1, 0.95))
@@ -857,8 +858,7 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
     plt.subplots_adjust(wspace=0.25)
     uv = UVData()
     uv.read_uvh5(file)
-    h = cm_hookup.Hookup()
-    x = h.get_hookup('HH')
+    x = cm_hookup.get_hookup('HH')
     baseline_groups = get_baseline_groups(uv,use_ants="auto")
     freqs = uv.freq_array[0]/1000000
     loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
@@ -952,8 +952,6 @@ def plot_antenna_positions(uv, badAnts={},flaggedAnts={},use_ants='auto',include
     N = len(inclNodes)
     cmap = plt.get_cmap('tab20')
     i = 0
-    nodePos = geo_sysdef.read_nodes()
-    antPos = geo_sysdef.read_antennas()
     ants = geo_sysdef.read_antennas()
     nodes = geo_sysdef.read_nodes()
     firstNode = True
@@ -1617,8 +1615,7 @@ def getInternodeMedians(uv,data,pols=['xx','yy'],badAnts=[],baselines='all'):
         for pol in pols:
             nodeCorrs[node][pol] = []        
     start=0
-    h = cm_hookup.Hookup()
-    x = h.get_hookup('HH')
+    x = cm_hookup.get_hookup('HH')
     for pol in pols:
         for i in range(nants):
             for j in range(nants):
@@ -1730,8 +1727,7 @@ def generate_nodeDict(uv):
     """
     
     antnums = uv.get_ants()
-    h = cm_hookup.Hookup()
-    x = h.get_hookup('HH')
+    x = cm_hookup.get_hookup('HH')
     nodes = {}
     antDict = {}
     inclNodes = []
@@ -1787,8 +1783,7 @@ def sort_antennas(uv):
     sortedAntennas = []
     for n in sorted(inclNodes):
         snappairs = []
-        h = cm_hookup.Hookup()
-        x = h.get_hookup('HH')
+        x = cm_hookup.get_hookup('HH')
         for ant in nodes[n]['ants']:
             snappairs.append(antDict[ant]['snapLocs'])
         snapLocs = {}
@@ -2072,8 +2067,7 @@ def plot_wfds(uvd, _data_sq, pol):
         'calibration_maintenance' : 'cal-M',
         'calibration_ok' : 'cal-OK',
         'calibration_triage' : 'cal-Tri'}
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
+    h = cm_active.get_active(at_date=jd, float_format="jd")
 
     custom_lines = []
     labels = []
@@ -2995,4 +2989,4 @@ class Antenna:
             mms['Jnn_Redcal_chisq'] = np.nanmedian([self.Jnn_chisqs[jd] if jd in self.Jnn_chisqs else np.nan for jd in jds])
             return sorted(mms.items(), key=lambda item: item[1])[-1][0]            
             
-        return np.nan    
+        return np.nan
