@@ -376,7 +376,7 @@ def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts={},tempAnts={},crossedAnts=
     h = cm_active.get_active(at_date=jd, float_format="jd")
     inspectAnts = []
     for ant in use_ants:
-        status = get_ant_status(ant,jd)
+        status = get_ant_status(h, ant)
         if ant in badAnts or ant in flaggedAnts.keys() or ant in crossedAnts:
             if status in status_use:
                 inspectAnts.append(ant)
@@ -409,21 +409,21 @@ def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts={},tempAnts={},crossedAnts=
         
     return inspectAnts
 
-def get_ant_status(ant,jd):
-    h = cm_active.get_active(at_date=jd, float_format="jd")
-    if f'HH{ant}:A' in h.apriori.keys():
+def get_ant_status(active_apriori, ant):
+    if f'HH{ant}:A' in active_apriori.apriori.keys():
         key = f'HH{ant}:A'
-    elif f'HA{ant}:A' in h.apriori.keys():
+    elif f'HA{ant}:A' in active_apriori.apriori.keys():
         key = f'HA{ant}:A'
-    elif f'HB{ant}:A' in h.apriori.keys():
+    elif f'HB{ant}:A' in active_apriori.apriori.keys():
         key = f'HB{ant}:A'
     else:
         print(f'############## Error: antenna {ant} not included in apriori status table ##############')
-    status = h.apriori[key].status
+    status = active_apriori.apriori[key].status
     return status
     
 def auto_waterfall_lineplot(uv, ant, jd, pols=['xx','yy'], colorbar_min=1e6, colorbar_max=1e8, title=''):
-    status = get_ant_status(ant,jd)
+    h = cm_active.get_active(at_date=jd, float_format="jd")
+    status = get_ant_status(h, ant)
     freq = uv.freq_array[0]*1e-6
     fig = plt.figure(figsize=(12,8))
     gs = gridspec.GridSpec(3, 2, height_ratios=[2,0.7,1])
@@ -539,7 +539,7 @@ def plot_autos(uvdx, uvdy):
         for _,a in enumerate(sorted_ants):
             if a not in ants:
                 continue
-            status = get_ant_status(a,jd)
+            status = get_ant_status(h, a)
             ax = axes[i,j]
             ax.set_xlim(xlim)
             ax.set_ylim(ylim)
@@ -613,7 +613,7 @@ def plot_wfs(uvd, pol, mean_sub=False, save=False, jd='',auto_scale=True,vmin=6.
         for _,a in enumerate(sorted_ants):
             if a not in ants:
                 continue
-            status = get_ant_status(a,jd)
+            status = get_ant_status(h, a)
             abb = status_abbreviations[status]
             ax = axes[i,j]
             dat = np.log10(np.abs(uvd.get_data(a,a,polnames[pol])))
@@ -675,7 +675,7 @@ def plot_mean_subtracted_wfs(uvd, use_ants, jd, pols=['xx','yy']):
     fig.subplots_adjust(left=.1, bottom=.1, right=.85, top=.975, wspace=0.05, hspace=0.2)
 
     for i,ant in enumerate(ants):
-        status = get_ant_status(ant,jd)
+        status = get_ant_status(h, ant)
         abb = status_abbreviations[status]
         color = status_colors[status]
         for j,pol in enumerate(pols):
@@ -2094,7 +2094,7 @@ def plot_wfds(uvd, _data_sq, pol):
         for _,a in enumerate(sorted_ants):
             if a not in ants:
                 continue
-            status = get_ant_status(a,jd)
+            status = get_ant_status(h, a)
             abb = status_abbreviations[status]
             ax = axes[i,j]
             key = (a, a, polnames[pol])
