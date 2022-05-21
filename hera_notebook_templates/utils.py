@@ -858,7 +858,7 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
     plt.subplots_adjust(wspace=0.25)
     uv = UVData()
     uv.read_uvh5(file)
-    x = cm_hookup.get_hookup('HH')
+    x = cm_hookup.get_hookup('default')
     baseline_groups = get_baseline_groups(uv,use_ants="auto")
     freqs = uv.freq_array[0]/1000000
     loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
@@ -1615,7 +1615,7 @@ def getInternodeMedians(uv,data,pols=['xx','yy'],badAnts=[],baselines='all'):
         for pol in pols:
             nodeCorrs[node][pol] = []        
     start=0
-    x = cm_hookup.get_hookup('HH')
+    x = cm_hookup.get_hookup('default')
     for pol in pols:
         for i in range(nants):
             for j in range(nants):
@@ -1727,7 +1727,7 @@ def generate_nodeDict(uv):
     """
     
     antnums = uv.get_ants()
-    x = cm_hookup.get_hookup('HH')
+    x = cm_hookup.get_hookup('default')
     nodes = {}
     antDict = {}
     inclNodes = []
@@ -1783,7 +1783,7 @@ def sort_antennas(uv):
     sortedAntennas = []
     for n in sorted(inclNodes):
         snappairs = []
-        x = cm_hookup.get_hookup('HH')
+        x = cm_hookup.get_hookup('default')
         for ant in nodes[n]['ants']:
             snappairs.append(antDict[ant]['snapLocs'])
         snapLocs = {}
