@@ -2,44 +2,51 @@
 # Copyright 2020 the HERA Project
 # Licensed under the MIT License
 
-import matplotlib
-import matplotlib.pyplot as plt
-from matplotlib.ticker import FormatStrFormatter
-import matplotlib.patches as mpatches
-import matplotlib.gridspec as gridspec
-import numpy as np
-from pyuvdata import UVCal, UVData, UVFlag, utils
 import os
 import sys
 import glob
-import uvtools as uvt
+import warnings 
+import copy
+import math
+import json
+import csv
+from multiprocessing import Process, Queue
+
+import numpy as np
+import pandas
+import healpy
+import scipy
+from pyuvdata import UVCal, UVData, UVFlag, utils
+
 from astropy.time import Time
 from astropy.coordinates import EarthLocation, AltAz, Angle
 from astropy.coordinates import SkyCoord as sc
-import pandas
-import warnings 
-import copy
-from hera_mc import cm_hookup, geo_sysdef
-import math
-from uvtools import dspec
-import hera_qm 
-from hera_mc import cm_active
-from matplotlib.lines import Line2D
-from matplotlib import colors
-import json
-from hera_notebook_templates.data import DATA_PATH
 from astropy.io import fits
-import csv
 from astropy import units as u
 from astropy_healpix import HEALPix
 from astropy.coordinates import Galactic
-import healpy
-from multiprocessing import Process, Queue
+
 from bokeh.layouts import row, column
 from bokeh.models import CustomJS, Select, RadioButtonGroup, Range1d
 from bokeh.plotting import figure, output_file, show, ColumnDataSource
 from bokeh.io import output_notebook
-import scipy
+
+import matplotlib
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import matplotlib.gridspec as gridspec
+from matplotlib.ticker import FormatStrFormatter
+from matplotlib.lines import Line2D
+from matplotlib import colors
+
+import hera_qm
+from hera_mc import cm_hookup, geo_sysdef
+from hera_mc import cm_active
+import uvtools as uvt
+from uvtools import dspec
+
+from hera_notebook_templates.data import DATA_PATH
+
 warnings.filterwarnings('ignore')
 
 # useful global variables
@@ -52,7 +59,8 @@ status_colors = {
     'digital_ok' : 'mediumpurple',
     'calibration_maintenance' : 'lightgreen',
     'calibration_ok' : 'green',
-    'calibration_triage' : 'lime'}
+    'calibration_triage' : 'lime',
+    'not_connected' : 'gray'}
 status_abbreviations = {
     'dish_maintenance' : 'dish-M',
     'dish_ok' : 'dish-OK',
@@ -62,15 +70,15 @@ status_abbreviations = {
     'digital_ok' : 'dig-OK',
     'calibration_maintenance' : 'cal-M',
     'calibration_ok' : 'cal-OK',
-    'calibration_triage' : 'cal-Tri'}
+    'calibration_triage' : 'cal-Tri',
+    'not_connected' : 'No-Con'}
 
 
 def get_use_ants(uvd,statuses,jd):
     statuses = statuses.split(',')
     ants = np.unique(np.concatenate((uvd.ant_1_array, uvd.ant_2_array)))
     use_ants = []
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
+    h = cm_active.get_active(at_date=jd, float_format="jd")
     for ant_name in h.apriori:
         ant = int("".join(filter(str.isdigit, ant_name)))
         if ant in ants:
@@ -100,7 +108,6 @@ def flag_by_template(uvd,HHfiles,jd,use_ants='auto',pols=['XX','YY'],polDirs=['N
         use_ants = uvd.get_ants()
     flaggedAnts = {polDirs[0]: [], polDirs[1]: []}
     for i,lst in enumerate(use_lsts):
-#         print(lst)
         hdat = UVData()
         hdat.read(use_files[i],antenna_nums=use_ants)
         for p,pol in enumerate(pols):
@@ -366,11 +373,10 @@ def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts={},tempAnts={},crossedAnts=
     status_use = ['RF_ok','digital_ok','calibration_maintenance','calibration_ok','calibration_triage']
     if use_ants == 'auto':
         use_ants = uvd1.get_ants()
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
+    h = cm_active.get_active(at_date=jd, float_format="jd")
     inspectAnts = []
     for ant in use_ants:
-        status = h.apriori[f'HH{ant}:A'].status
+        status = get_ant_status(h, ant)
         if ant in badAnts or ant in flaggedAnts.keys() or ant in crossedAnts:
             if status in status_use:
                 inspectAnts.append(ant)
@@ -402,11 +408,22 @@ def plot_inspect_ants(uvd1,jd,badAnts=[],flaggedAnts={},tempAnts={},crossedAnts=
         auto_waterfall_lineplot(uvd1,ant,jd,title=inspectTitles[ant])
         
     return inspectAnts
+
+def get_ant_status(active_apriori, ant):
+    if f'HH{ant}:A' in active_apriori.apriori.keys():
+        key = f'HH{ant}:A'
+    elif f'HA{ant}:A' in active_apriori.apriori.keys():
+        key = f'HA{ant}:A'
+    elif f'HB{ant}:A' in active_apriori.apriori.keys():
+        key = f'HB{ant}:A'
+    else:
+        print(f'############## Error: antenna {ant} not included in apriori status table ##############')
+    status = active_apriori.apriori[key].status
+    return status
     
 def auto_waterfall_lineplot(uv, ant, jd, pols=['xx','yy'], colorbar_min=1e6, colorbar_max=1e8, title=''):
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
-    status = h.apriori[f'HH{ant}:A'].status
+    h = cm_active.get_active(at_date=jd, float_format="jd")
+    status = get_ant_status(h, ant)
     freq = uv.freq_array[0]*1e-6
     fig = plt.figure(figsize=(12,8))
     gs = gridspec.GridSpec(3, 2, height_ratios=[2,0.7,1])
@@ -504,8 +521,7 @@ def plot_autos(uvdx, uvdy):
     jd = times[t_index]
     utc = Time(jd, format='jd').datetime
     
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
+    h = cm_active.get_active(at_date=jd, float_format="jd")
 
     xlim = (np.min(freqs), np.max(freqs))
     ylim = (55, 85)
@@ -523,7 +539,7 @@ def plot_autos(uvdx, uvdy):
         for _,a in enumerate(sorted_ants):
             if a not in ants:
                 continue
-            status = h.apriori[f'HH{a}:A'].status
+            status = get_ant_status(h, a)
             ax = axes[i,j]
             ax.set_xlim(xlim)
             ax.set_ylim(ylim)
@@ -552,7 +568,7 @@ def plot_autos(uvdx, uvdy):
     plt.show()
     plt.close()
     
-def plot_wfs(uvd, pol, mean_sub=False, save=False, jd=''):
+def plot_wfs(uvd, pol, mean_sub=False, save=False, jd='',auto_scale=True,vmin=6.5,vmax=8):
     amps = np.abs(uvd.data_array[:, :, :, pol].reshape(uvd.Ntimes, uvd.Nants_data, uvd.Nfreqs, 1))
     nodes, antDict, inclNodes = generate_nodeDict(uvd)
     ants = uvd.get_ants()
@@ -577,8 +593,7 @@ def plot_wfs(uvd, pol, mean_sub=False, save=False, jd=''):
     jd = times[t_index]
     utc = Time(jd, format='jd').datetime
     
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
+    h = cm_active.get_active(at_date=jd, float_format="jd")
     ptitle = 1.92/(Yside*3)
     fig, axes = plt.subplots(Yside, Nside, figsize=(16,Yside*3))
     if pol == 0:
@@ -587,8 +602,10 @@ def plot_wfs(uvd, pol, mean_sub=False, save=False, jd=''):
         fig.suptitle("East Polarization", fontsize=14, y=1+ptitle)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.subplots_adjust(left=0, bottom=.1, right=.9, top=1, wspace=0.1, hspace=0.3)
-    vmin = 6.5
-    vmax = 8
+    if auto_scale:
+        med = np.nanmedian(np.log10(abs(uvd.data_array)))
+        vmin = med - 0.75
+        vmax = med + 0.75
 
     for i,n in enumerate(inclNodes):
         ants = nodes[n]['ants']
@@ -596,7 +613,7 @@ def plot_wfs(uvd, pol, mean_sub=False, save=False, jd=''):
         for _,a in enumerate(sorted_ants):
             if a not in ants:
                 continue
-            status = h.apriori[f'HH{a}:A'].status
+            status = get_ant_status(h, a)
             abb = status_abbreviations[status]
             ax = axes[i,j]
             dat = np.log10(np.abs(uvd.get_data(a,a,polnames[pol])))
@@ -649,17 +666,16 @@ def plot_mean_subtracted_wfs(uvd, use_ants, jd, pols=['xx','yy']):
     ants = sorted(use_ants)
     Nants = len(ants) 
     pol_labels = ['NN','EE']
-    
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
-    
+
+    h = cm_active.get_active(at_date=jd, float_format="jd")
+
     fig, axes = plt.subplots(Nants, 2, figsize=(7,Nants*2.2))
     fig.suptitle('Mean Subtracted Waterfalls')
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.subplots_adjust(left=.1, bottom=.1, right=.85, top=.975, wspace=0.05, hspace=0.2)
 
     for i,ant in enumerate(ants):
-        status = h.apriori[f'HH{ant}:A'].status
+        status = get_ant_status(h, ant)
         abb = status_abbreviations[status]
         color = status_colors[status]
         for j,pol in enumerate(pols):
@@ -842,8 +858,7 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
     plt.subplots_adjust(wspace=0.25)
     uv = UVData()
     uv.read_uvh5(file)
-    h = cm_hookup.Hookup()
-    x = h.get_hookup('HH')
+    x = cm_hookup.get_hookup('default')
     baseline_groups = get_baseline_groups(uv,use_ants="auto")
     freqs = uv.freq_array[0]/1000000
     loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
@@ -915,7 +930,7 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
     plt.show()
     plt.close()
     
-def plot_antenna_positions(uv, badAnts={},flaggedAnts={},use_ants='auto'):
+def plot_antenna_positions(uv, badAnts={},flaggedAnts={},use_ants='auto',includeOutriggers=False):
     """
     Plots the positions of all antennas that have data, colored by node.
     
@@ -927,6 +942,9 @@ def plot_antenna_positions(uv, badAnts={},flaggedAnts={},use_ants='auto'):
         A list of flagged or bad antennas. These will be outlined in black in the plot. 
     flaggedAnts: Dict
         A dict of antennas flagged by ant_metrics with value corresponding to color in ant_metrics plot
+    includeOutriggers: Boolean
+        Option to include outriggers in the antenna map. Doing so will significantly decrease resolution on the primary
+        hex antennas.
     """
     
     plt.figure(figsize=(12,10))
@@ -934,8 +952,6 @@ def plot_antenna_positions(uv, badAnts={},flaggedAnts={},use_ants='auto'):
     N = len(inclNodes)
     cmap = plt.get_cmap('tab20')
     i = 0
-    nodePos = geo_sysdef.read_nodes()
-    antPos = geo_sysdef.read_antennas()
     ants = geo_sysdef.read_antennas()
     nodes = geo_sysdef.read_nodes()
     firstNode = True
@@ -959,7 +975,18 @@ def plot_antenna_positions(uv, badAnts={},flaggedAnts={},use_ants='auto'):
                 try:
                     this_ant = ants[station]
                 except KeyError:
-                    continue
+                    if includeOutriggers:
+                        try:
+                            station = 'HA{}'.format(a)
+                            this_ant = ants[station]
+                        except KeyError:
+                            try:
+                                station = 'HB{}'.format(a)
+                                this_ant = ants[station]
+                            except KeyError:
+                                continue
+                    else:
+                        continue
                 x = this_ant['E']
                 y = this_ant['N']
                 if a in use_ants:
@@ -1209,9 +1236,10 @@ def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logSc
     """
     if nodes=='auto':
         nodeDict, antDict, inclNodes = generate_nodeDict(uv)
-    nantsTotal = len(uv.get_ants())
+    antnumsAll = sort_antennas(uv)
+    nantsTotal = len(antnumsAll)
     power = np.empty((nantsTotal,nantsTotal))
-    fig, axs = plt.subplots(2,2,figsize=(16,16))
+    fig, axs = plt.subplots(2,2,figsize=(20,20))
     dirs = ['NN','EE','NE','EN']
     cmap='plasma'
     if plotRatios is True:
@@ -1224,7 +1252,6 @@ def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logSc
     t = Time(jd,format='jd',location=loc)
     lst = round(t.sidereal_time('mean').hour,2)
     t.format='fits'
-    antnumsAll = sort_antennas(uv)
     i = 0
     for p in range(len(pols)):
         if p >= 2:
@@ -1244,7 +1271,7 @@ def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logSc
             n += len(nodeDict[node]['ants'])
             axs[i][p%2].axhline(len(antnumsAll)-n+.5,lw=4)
             axs[i][p%2].axvline(n+.5,lw=4)
-            axs[i][p%2].text(n-len(nodeDict[node]['ants'])/2,-.5,node)
+            axs[i][p%2].text(n-len(nodeDict[node]['ants'])/2,-1.2,node)
         axs[i][p%2].text(.42,-.05,'Node Number',transform=axs[i][p%2].transAxes)
     n=0
     for node in sorted(inclNodes):
@@ -1268,7 +1295,7 @@ def plotCorrMatrix(uv,data,pols=['xx','yy'],vminIn=0,vmaxIn=1,nodes='auto',logSc
     cbar = fig.colorbar(im, cax=cbar_ax)
     fig.suptitle('Correlation Matrix - JD: %s, LST: %.0fh' % (str(jd),np.round(lst,0)))
     fig.subplots_adjust(top=1.28,wspace=0.05,hspace=1.1)
-    fig.tight_layout()
+    plt.tight_layout()
     plt.show()
     plt.close()
     
@@ -1588,8 +1615,7 @@ def getInternodeMedians(uv,data,pols=['xx','yy'],badAnts=[],baselines='all'):
         for pol in pols:
             nodeCorrs[node][pol] = []        
     start=0
-    h = cm_hookup.Hookup()
-    x = h.get_hookup('HH')
+    x = cm_hookup.get_hookup('default')
     for pol in pols:
         for i in range(nants):
             for j in range(nants):
@@ -1701,26 +1727,36 @@ def generate_nodeDict(uv):
     """
     
     antnums = uv.get_ants()
-    h = cm_hookup.Hookup()
-    x = h.get_hookup('HH')
+    x = cm_hookup.get_hookup('default')
     nodes = {}
     antDict = {}
     inclNodes = []
-    for ant in antnums:
-        key = 'HH%i:A' % (ant)
-        n = x[key].get_part_from_type('node')['E<ground'][1:]
-        snapLoc = (x[key].hookup['E<ground'][-1].downstream_input_port[-1], ant)
-        snapInput = (x[key].hookup['E<ground'][-2].downstream_input_port[1:], ant)
+    for key in x.keys():
+        ant = int(key.split(':')[0][2:])
+        if ant not in antnums:
+            continue
+        if x[key].get_part_from_type('node')['E<ground'] == None:
+            n = None
+            snapLoc = None
+            snapInput = None
+        else:
+            n = x[key].get_part_from_type('node')['E<ground'][1:]
+            snapLoc = (x[key].hookup['E<ground'][-1].downstream_input_port[-1], ant)
+            snapInput = (x[key].hookup['E<ground'][-2].downstream_input_port[1:], ant)
         antDict[ant] = {}
-        antDict[ant]['node'] = str(n)
+        if n == None:
+            antDict[ant]['node'] = None
+        else:
+            antDict[ant]['node'] = str(n)
         antDict[ant]['snapLocs'] = snapLoc
         antDict[ant]['snapInput'] = snapInput
-        inclNodes.append(n)
+        if n != None:
+            inclNodes.append(n)
         if n in nodes:
             nodes[n]['ants'].append(ant)
             nodes[n]['snapLocs'].append(snapLoc)
             nodes[n]['snapInput'].append(snapInput)
-        else:
+        elif n!=None:
             nodes[n] = {}
             nodes[n]['ants'] = [ant]
             nodes[n]['snapLocs'] = [snapLoc]
@@ -1747,8 +1783,7 @@ def sort_antennas(uv):
     sortedAntennas = []
     for n in sorted(inclNodes):
         snappairs = []
-        h = cm_hookup.Hookup()
-        x = h.get_hookup('HH')
+        x = cm_hookup.get_hookup('default')
         for ant in nodes[n]['ants']:
             snappairs.append(antDict[ant]['snapLocs'])
         snapLocs = {}
@@ -1973,7 +2008,7 @@ def func_clean_ds_mpi(rank, queue, N_threads, bls, pols, uvd_ds, uvd_diff, area,
                 _data_cleaned_sq[key] = _d_even * _d_odd.conj()
             k += 1
     queue.put([_data_cleaned_sq, d_even, d_odd])
-
+    
 def plot_wfds(uvd, _data_sq, pol):
     """
     Waterfall diagram for autocorrelation delay spectrum
@@ -2032,8 +2067,7 @@ def plot_wfds(uvd, _data_sq, pol):
         'calibration_maintenance' : 'cal-M',
         'calibration_ok' : 'cal-OK',
         'calibration_triage' : 'cal-Tri'}
-    h = cm_active.ActiveData(at_date=jd)
-    h.load_apriori()
+    h = cm_active.get_active(at_date=jd, float_format="jd")
 
     custom_lines = []
     labels = []
@@ -2042,20 +2076,14 @@ def plot_wfds(uvd, _data_sq, pol):
         custom_lines.append(Line2D([0],[0],color=c,lw=2))
         labels.append(s)
     ptitle = 1.92/(Yside*3)
-    fig, axes = plt.subplots(Yside, Nside, figsize=(16,Yside*3))
-    if pol == 0:
-        fig.suptitle("nn polarization", fontsize=14, y=1+ptitle)
-        vmin, vmax = -50, -30
-    elif pol == 1:
-        fig.suptitle("ee polarization", fontsize=14, y=1+ptitle)
-        vmin, vmax = -50, -30
-    elif pol == 2:
-        fig.suptitle("ne polarization", fontsize=14, y=1+ptitle)
-        vmin, vmax = -50, -30
-    fig.legend(custom_lines,labels,bbox_to_anchor=(0.7,1),ncol=3)
+    
+    fig, axes = plt.subplots(Yside, Nside, figsize=(12,17+(Yside-10)))
+    fig.suptitle(" ", fontsize=14, y=1+ptitle)
+    vmin, vmax = -50, -30
+    fig.legend(custom_lines,labels,bbox_to_anchor=(0.8,1),ncol=3)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.subplots_adjust(left=0, bottom=.1, right=.9, top=1, wspace=0.1, hspace=0.3)
-
+    fig.subplots_adjust(left=0, bottom=.1, right=.9, top=0.95, wspace=0.1, hspace=0.3)
+    
     xticks = np.int32(np.ceil(np.linspace(0,len(taus)-1,5)))
     xticklabels = np.around(taus[xticks],0)
     yticks = [int(i) for i in np.linspace(0,len(lsts)-1,6)]
@@ -2066,7 +2094,7 @@ def plot_wfds(uvd, _data_sq, pol):
         for _,a in enumerate(sorted_ants):
             if a not in ants:
                 continue
-            status = h.apriori[f'HH{a}:A'].status
+            status = get_ant_status(h, a)
             abb = status_abbreviations[status]
             ax = axes[i,j]
             key = (a, a, polnames[pol])
@@ -2078,7 +2106,7 @@ def plot_wfds(uvd, _data_sq, pol):
                 norm = np.sqrt(np.abs(_data_sq[key1])*np.abs(_data_sq[key2])).max(axis=1)[:,np.newaxis]
             ds = 10.*np.log10(np.sqrt(np.abs(_data_sq[key])/norm))
             im = ax.imshow(ds, aspect='auto', interpolation='nearest', vmin=vmin, vmax=vmax)
-            ax.set_title(f'{a} ({abb})', fontsize=10, backgroundcolor=status_colors[status])
+            ax.set_title(f'{a} ({abb})', fontsize=8, backgroundcolor=status_colors[status])
             if i == len(inclNodes)-1:
                 ax.set_xticks(xticks)
                 ax.set_xticklabels(xticklabels)
@@ -2091,21 +2119,16 @@ def plot_wfds(uvd, _data_sq, pol):
                 ax.set_yticks(yticks)
                 ax.set_yticklabels([])
             else:
-                [t.set_fontsize(12) for t in ax.get_yticklabels()]
                 ax.set_ylabel('Time (LST)', fontsize=10)
                 ax.set_yticks(yticks)
                 ax.set_yticklabels(yticklabels)
-                ax.set_ylabel('Time (LST)', fontsize=10)
             j += 1
         for k in range(j,maxants):
             axes[i,k].axis('off')
         pos = ax.get_position()
-        cbar_ax=fig.add_axes([0.91,pos.y0,0.01,pos.height])
-        cbar = fig.colorbar(im, cax=cbar_ax)
+        cbar_ax = fig.add_axes([0.91,pos.y0,0.01,pos.height])
+        cbar = fig.colorbar(im, cax=cbar_ax, ticks=[-50, -45, -40, -35, -30])
         cbar.set_label(f'Node {n}',rotation=270, labelpad=15)
-#         cbarticks = [np.around(x,1) for x in np.linspace(vmin,vmax,7)[i] for i in cbar.get_ticks()]
-#         cbar.set_ticklabels(cbarticks)
-#         axes[i,maxants-1].annotate(f'Node {n}', (.97,pos.y0+.03),xycoords='figure fraction',rotation=270)
     fig.show()
 
 def plot_antFeatureMap_2700ns(uvd, _data_sq, JD, pol='ee'):
@@ -2210,16 +2233,19 @@ def plot_antFeatureMap_2700ns(uvd, _data_sq, JD, pol='ee'):
             amp = 10*np.log10(np.sqrt(np.nanmean(np.abs(_data_sq[key][:,idx_region1]))/np.nanmean(np.abs(_data_sq[key][:,idx_region2]))))
             nodeamps.append(amp)
             points[i,:] = [antPos[1],antPos[2]]
-        hull = scipy.spatial.ConvexHull(points)
-        center = np.average(points,axis=0)
-        hullpoints = np.zeros((len(hull.simplices),2))
-        namp = np.nanmean(nodeamps)
-        ncolor = cmap(float((namp-ampmin)/rang))
-        plt.fill(points[hull.vertices,0], points[hull.vertices,1],alpha=0.5,color=ncolor)
+        try:
+            hull = scipy.spatial.ConvexHull(points)
+            center = np.average(points,axis=0)
+            hullpoints = np.zeros((len(hull.simplices),2))
+            namp = np.nanmean(nodeamps)
+            ncolor = cmap(float((namp-ampmin)/rang))
+            plt.fill(points[hull.vertices,0], points[hull.vertices,1],alpha=0.5,color=ncolor)
+        except:
+            continue
     for node in sorted(inclNodes):
         ants = sorted(nodes[node]['ants'])
         npos = nd[int(node)]['pos']
-        plt.plot(npos[0],npos[1],marker="s",markersize=15,color="black")
+#         plt.plot(npos[0],npos[1],marker="s",markersize=15,color="black")
         for antNum in ants:
             idx = np.argwhere(uvd.antenna_numbers == antNum)[0][0]
             antPos = uvd.antenna_positions[idx]
@@ -2346,16 +2372,19 @@ def plot_antFeatureMap_noise(uvd, d_even, d_odd, JD, pol='ee'):
             amp = np.nanmean(get_ds_average(d_even[key], d_odd[key])[idx_region])/np.nanmean(get_ds_average(diff, diff)[idx_region])
             nodeamps.append(amp)
             points[i,:] = [antPos[1],antPos[2]]
-        hull = scipy.spatial.ConvexHull(points)
-        center = np.average(points,axis=0)
-        hullpoints = np.zeros((len(hull.simplices),2))
-        namp = np.nanmean(nodeamps)
-        ncolor = cmap(float((namp-ampmin)/rang))
-        plt.fill(points[hull.vertices,0], points[hull.vertices,1],alpha=0.5,color=ncolor)
+        try:
+            hull = scipy.spatial.ConvexHull(points)
+            center = np.average(points,axis=0)
+            hullpoints = np.zeros((len(hull.simplices),2))
+            namp = np.nanmean(nodeamps)
+            ncolor = cmap(float((namp-ampmin)/rang))
+            plt.fill(points[hull.vertices,0], points[hull.vertices,1],alpha=0.5,color=ncolor)
+        except:
+            continue
     for node in sorted(inclNodes):
         ants = sorted(nodes[node]['ants'])
         npos = nd[int(node)]['pos']
-        plt.plot(npos[0],npos[1],marker="s",markersize=15,color="black")
+#         plt.plot(npos[0],npos[1],marker="s",markersize=15,color="black")
         for antNum in ants:
             idx = np.argwhere(uvd.antenna_numbers == antNum)[0][0]
             antPos = uvd.antenna_positions[idx]
@@ -2463,6 +2492,7 @@ def interactive_plots_dspec(bls, uvd, uvd_diff, JD):
     N_xaxis = []
     N_aggr = [0]
     keys = []
+    buffer = 15
     for i, bl in enumerate(bls):
         for j, pol in enumerate(pols):
             key = (bl[0],bl[1],pol)
@@ -2477,7 +2507,7 @@ def interactive_plots_dspec(bls, uvd, uvd_diff, JD):
             wgts_ave = np.where(wgts_ave > 0.7, 1, 0)
 
             if(np.isnan(np.mean(auto_ave)) != True):
-                data_full = data_full + list(auto_ave)
+                data_full = data_full + list(np.log10(auto_ave))
             else:
                 data_full = data_full + list(np.isnan(auto_ave).astype(float))
             wgts_full = wgts_full + list(wgts_ave)
@@ -2489,6 +2519,10 @@ def interactive_plots_dspec(bls, uvd, uvd_diff, JD):
                 diff = uvd_diff.get_data(key)[:,idx_freq]
                 _data_ave = get_ds_average(d_even, d_odd)
                 _diff_ave = get_ds_average(diff, diff)
+                
+                # select the positive delays
+                _data_ave = _data_ave[idx_freq.size//2-buffer:]
+                _diff_ave = _diff_ave[idx_freq.size//2-buffer:]
 
                 if(np.isnan(np.mean(_data_ave)) != True and np.mean(_data_ave) != 0):
                     _data_full = _data_full + list(10*np.log10(_data_ave/_data_ave.max()))
@@ -2500,16 +2534,22 @@ def interactive_plots_dspec(bls, uvd, uvd_diff, JD):
                 if(i == 0 and j == 0):
                     freqs_sub = freqs[idx_freq]
                     taus_sub = np.fft.fftshift(np.fft.fftfreq(freqs_sub.size, np.diff(freqs_sub)[0]))
-                    taus_full = taus_full + list(taus_sub*1e9)
-                    N_xaxis.append(len(freqs_sub))
+                    taus_sub = taus_sub[taus_sub.size//2-buffer:]
+                    taus_full += list(taus_sub*1e9)
+                    N_xaxis.append(len(taus_sub))
                     N_aggr.append(np.sum(N_xaxis))
+                    
+    _data_full = np.array(_data_full, dtype=np.float32)
+    _diff_full = np.array(_diff_full, dtype=np.float32)
+    data_full = np.array(data_full, dtype=np.float32)
 
-    x_le = taus_full[:freqs.size]
-    ds_update = _data_full[:freqs.size]
-    dff_update = _diff_full[:freqs.size]
+    taus_full += list(np.zeros(1000)) # to bypass a bug (?) in bokeh
+    x_le = taus_full[:N_xaxis[0]]
+    ds_update = _data_full[:N_xaxis[0]]
+    dff_update = _diff_full[:N_xaxis[0]]
     x_ri = freqs/1e6
-    auto_update = np.log10(data_full[:freqs.size])
-    auto_flagged_update = np.array(auto_update, dtype=np.float64)/np.array(wgts_full[:freqs.size], dtype=np.float64)-0.1
+    auto_update = data_full[:freqs.size]
+    auto_flagged_update = auto_update/np.array(wgts_full[:freqs.size])-0.1
 
     source = ColumnDataSource(data=dict(x_le=x_le, ds_update=ds_update, dff_update=dff_update, N_xaxis=N_xaxis, N_aggr=N_aggr,
                                         taus_full=taus_full, _data_full=_data_full, _diff_full=_diff_full,
@@ -2551,9 +2591,9 @@ def interactive_plots_dspec(bls, uvd, uvd_diff, JD):
         var taus_full = data['taus_full'];
         var _data_full = data['_data_full'];
         var _diff_full = data['_diff_full'];
-        var x_ri = data['x_ri']
-        var data_full = data['data_full']
-        var wgts_full = data['wgts_full']
+        var x_ri = data['x_ri'];
+        var data_full = data['data_full'];
+        var wgts_full = data['wgts_full'];
         for (var i = 0; i < keys.length; i++) {
             if (key == keys[i]) {
                 for (var j = 0; j < N_xaxis[active]; j++) {
@@ -2562,8 +2602,8 @@ def interactive_plots_dspec(bls, uvd, uvd_diff, JD):
                     y2_le.push(_diff_full[N_aggr[5]*i+N_aggr[active]+j]);
                 }
                 for (var j = 0; j < x_ri.length; j++) {
-                    y1_ri.push(Math.log10(data_full[x_ri.length*i+j]));
-                    y2_ri.push(Math.log10(data_full[x_ri.length*i+j])/wgts_full[x_ri.length*i+j]-0.1);
+                    y1_ri.push(data_full[x_ri.length*i+j]);
+                    y2_ri.push(data_full[x_ri.length*i+j]/wgts_full[x_ri.length*i+j]-0.1);
                 }
             }
         }
@@ -2949,4 +2989,4 @@ class Antenna:
             mms['Jnn_Redcal_chisq'] = np.nanmedian([self.Jnn_chisqs[jd] if jd in self.Jnn_chisqs else np.nan for jd in jds])
             return sorted(mms.items(), key=lambda item: item[1])[-1][0]            
             
-        return np.nan    
+        return np.nan
