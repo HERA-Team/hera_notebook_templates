@@ -2062,27 +2062,6 @@ def plot_wfds(uvd, _data_sq, pol):
     t_index = 0
     jd = times[t_index]
     utc = Time(jd, format='jd').datetime
-
-    status_colors = {
-        'dish_maintenance' : 'salmon',
-        'dish_ok' : 'red',
-        'RF_maintenance' : 'lightskyblue',
-        'RF_ok' : 'royalblue',
-        'digital_maintenance' : 'plum',
-        'digital_ok' : 'mediumpurple',
-        'calibration_maintenance' : 'lightgreen',
-        'calibration_ok' : 'green',
-        'calibration_triage' : 'lime'}
-    status_abbreviations = {
-        'dish_maintenance' : 'dish-M',
-        'dish_ok' : 'dish-OK',
-        'RF_maintenance' : 'RF-M',
-        'RF_ok' : 'RF-OK',
-        'digital_maintenance' : 'dig-M',
-        'digital_ok' : 'dig-OK',
-        'calibration_maintenance' : 'cal-M',
-        'calibration_ok' : 'cal-OK',
-        'calibration_triage' : 'cal-Tri'}
     h = cm_active.get_active(at_date=jd, float_format="jd")
 
     custom_lines = []
