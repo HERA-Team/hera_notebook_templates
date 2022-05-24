@@ -420,6 +420,17 @@ def get_ant_status(active_apriori, ant):
         print(f'############## Error: antenna {ant} not included in apriori status table ##############')
     status = active_apriori.apriori[key].status
     return status
+
+def get_ant_key(x, ant):
+    if f'HH{ant}:A' in x.keys():
+        key = f'HH{ant}:A'
+    elif f'HA{ant}:A' in x.keys():
+        key = f'HA{ant}:A'
+    elif f'HB{ant}:A' in x.keys():
+        key = f'HB{ant}:A'
+    else:
+        print(f'############## Error: antenna {ant} not included in connections table ##############')
+    return key
     
 def auto_waterfall_lineplot(uv, ant, jd, pols=['xx','yy'], colorbar_min=1e6, colorbar_max=1e8, title=''):
     h = cm_active.get_active(at_date=jd, float_format="jd")
@@ -893,9 +904,9 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
                 ant1 = ants[0]
                 ant2 = ants[1]
                 if (ant1 in use_ants and ant2 in use_ants) or use_all == True:
-                    key1 = 'HH%i:A' % (ant1)
+                    key1 = get_ant_key(x,ant1)
                     n1 = x[key1].get_part_from_type('node')['E<ground'][1:]
-                    key2 = 'HH%i:A' % (ant2)
+                    key2 = get_ant_key(x,ant2)
                     n2 = x[key2].get_part_from_type('node')['E<ground'][1:]
                     dat = np.mean(np.abs(uv.get_data(ant1,ant2,pol)),0)
                     auto1 = np.mean(np.abs(uv.get_data(ant1,ant1,pol)),0)
@@ -1623,9 +1634,9 @@ def getInternodeMedians(uv,data,pols=['xx','yy'],badAnts=[],baselines='all'):
                 ant2 = antnumsAll[j]
                 if ant1 not in badAnts and ant2 not in badAnts and ant1 != ant2:
                     if baselines=='all' or (ant1,ant2) in baselines:
-                        key1 = 'HH%i:A' % (ant1)
+                        key1 = get_ant_key(ant1)
                         n1 = x[key1].get_part_from_type('node')['E<ground'][1:]
-                        key2 = 'HH%i:A' % (ant2)
+                        key2 = get_ant_key(ant2)
                         n2 = x[key2].get_part_from_type('node')['E<ground'][1:]
                         dat = data[pol][i,j]
                         if n1 != n2:
@@ -1781,9 +1792,9 @@ def sort_antennas(uv):
     
     nodes, antDict, inclNodes = generate_nodeDict(uv)
     sortedAntennas = []
+    x = cm_hookup.get_hookup('default')
     for n in sorted(inclNodes):
         snappairs = []
-        x = cm_hookup.get_hookup('default')
         for ant in nodes[n]['ants']:
             snappairs.append(antDict[ant]['snapLocs'])
         snapLocs = {}
@@ -1801,10 +1812,15 @@ def sort_antennas(uv):
         for loc in locs:
             ants = snapLocs[loc]
             inputpairs = []
-            for ant in ants:
-                key = 'HH%i:A' % (ant)
-                pair = (int(x[key].hookup['E<ground'][-2].downstream_input_port[1:]), ant)
-                inputpairs.append(pair)
+            for key in x.keys():
+                ant = int(key.split(':')[0][2:])
+                if x[key].get_part_from_type('node')['E<ground'] == None:
+                    continue
+                elif ant not in ants:
+                    continue
+                else:
+                    pair = (int(x[key].hookup['E<ground'][-2].downstream_input_port[1:]), ant)
+                    inputpairs.append(pair)
             for _,a in sorted(inputpairs):
                 ants_sorted.append(a)
         for ant in ants_sorted:
