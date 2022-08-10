@@ -49,9 +49,9 @@ setup_args = {
         'scipy',
         'astropy',
         'pyuvdata',
-        'uvtools @ git+git://github.com/HERA-Team/uvtools',
-        'hera_mc @ git+git://github.com/HERA-Team/hera_mc',
-        'hera_qm @ git+git://github.com/HERA-Team/hera_qm',
+        'uvtools',
+        'hera-mc',
+        'hera-qm',
         'bokeh',
     ],
     'extras_require': {
