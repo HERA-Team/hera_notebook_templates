@@ -34,3 +34,6 @@ dynamic = [
 write_to = "hera_notebook_templates/_version.py"
 parentdir_prefix_version = "hera_notebook_templates-"
 fallback_version = "0.0.0"
+
+[tool.setuptools]
+packages = ["hera_notebook_templates"]
