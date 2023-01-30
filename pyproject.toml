@@ -25,7 +25,8 @@ dependencies = [
     "hera-qm>=2.1.0",
     "hera-calibration>=3.2.2",
     "bokeh",
-    "hera-mc"
+    "hera-mc",
+    "jupyter"
 ]
 dynamic = [
     "version",
