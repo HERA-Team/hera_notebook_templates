@@ -22,13 +22,16 @@ dependencies = [
     "astropy",
     "pyuvdata",
     "uvtools",
-    "hera-mc",
-    "hera-qm",
+    "hera-qm>=2.1.0",
+    "hera-calibration>=3.2.2",
     "bokeh",
+    "hera-mc",
+    "jupyter"
 ]
 dynamic = [
     "version",
 ]
+
 
 [tool.setuptools_scm]
 write_to = "hera_notebook_templates/_version.py"
