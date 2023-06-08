@@ -12,7 +12,7 @@ avail_kernels = k_manager.find_kernel_specs()
 main = click.Group()
 
 @main.command()
-def list():
+def avail():
     """List available notebooks."""
     for nb in NOTEBOOKS:
         click.echo(nb.stem)
@@ -24,7 +24,7 @@ def list():
 @click.argument("notebook", type=click.Choice([nb.stem for nb in NOTEBOOKS]))
 @click.option("-k", "--kernel", type=click.Choice(list(avail_kernels.keys())), default="python3")
 @click.option("-t", "--timeout", type=int, default=-1)
-@click.option("--formats", type=str, nargs='+', default=['html'])
+@click.option("-f", "--formats", type=str, multiple=True, default=['html'])
 @click.option("--ipynb/--no-ipynb", default=True)
 @click.option("-o", "--output", type=str, default=None)
 @click.option('--execute-args', type=str)
