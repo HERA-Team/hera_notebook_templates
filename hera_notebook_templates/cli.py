@@ -80,9 +80,9 @@ def run(notebook, kernel, timeout, formats, ipynb, output, output_dir, execute_a
                 "--output-dir", output_dir,
                 "--to", fmt,
                 convert_args,
-                str(output)
+                f"{output_dir}/{output}"
             ]
         )
 
     if not ipynb:
-        output.unlink()
+        (Path(output_dir) / output).unlink()
