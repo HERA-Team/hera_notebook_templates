@@ -40,3 +40,6 @@ fallback_version = "0.0.0"
 
 [tool.setuptools]
 packages = ["hera_notebook_templates"]
+
+[project.scripts]
+hnote = "hera_notebook_templates.cli:main"
