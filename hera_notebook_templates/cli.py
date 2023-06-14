@@ -69,7 +69,9 @@ def run(notebook, kernel, timeout, formats, ipynb, output, output_dir, execute_a
             str(nbfile)
         ],
         env={**params, **os.environ},
+        check=True
     )
+
 
     for fmt in formats:
         print(f"Converting executed notebook to {fmt}...")
@@ -81,7 +83,8 @@ def run(notebook, kernel, timeout, formats, ipynb, output, output_dir, execute_a
                 "--to", fmt,
                 convert_args,
                 f"{output_dir}/{output}"
-            ]
+            ],
+            check=True,
         )
 
     if not ipynb:
