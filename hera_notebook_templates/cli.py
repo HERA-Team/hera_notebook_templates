@@ -6,6 +6,9 @@ import jupyter_client
 from pathlib import Path
 import subprocess as sbp
 import os
+import papermill as pm
+
+NOTEBOOK_DICT = {nb.stem: nb for nb in NOTEBOOKS}
 
 k_manager = jupyter_client.kernelspec.KernelSpecManager()
 avail_kernels = k_manager.find_kernel_specs()
@@ -18,74 +21,94 @@ def avail():
     for nb in NOTEBOOKS:
         click.echo(nb.stem)
 
-
-@main.command(context_settings=dict(
-    ignore_unknown_options=True,
-))
+@main.command()
 @click.argument("notebook", type=click.Choice([nb.stem for nb in NOTEBOOKS]))
+def inspect(notebook):
+    infer = pm.inspect_notebook(str(NOTEBOOKS[[nb.stem for nb in NOTEBOOKS].index(notebook)]))
+
+    print(f"Parameters available from {notebook}")
+    print("---------------------------" + '-'*len(notebook))
+    for p, v in infer.items():
+        print(f"{p}: {v['inferred_type_name']}, default={v['default']}")
+        print(f"   {v['help']}")
+
+@main.group(context_settings=dict(
+    ignore_unknown_options=True,
+    allow_extra_args=True,
+))
 @click.option("-k", "--kernel", type=click.Choice(list(avail_kernels.keys())), default="python3")
-@click.option("-t", "--timeout", type=int, default=-1)
 @click.option("-f", "--formats", type=str, multiple=True, default=['html'])
 @click.option("--ipynb/--no-ipynb", default=True)
 @click.option("-o", "--output", type=str, default=None)
 @click.option("--output-dir", type=click.Path(exists=True, dir_okay=True, file_okay=False), default='.')
-@click.option('--execute-args', type=str, default='')
 @click.option('--convert-args', type=str, default='')
-@click.option("--params", type=str, default='', help="Extra parameters to pass to the notebook as env vars")
-def run(notebook, kernel, timeout, formats, ipynb, output, output_dir, execute_args, convert_args, params):
-    """Use nbconvert to run a notebook."""
-    nbfile = NOTEBOOKS[[nb.stem for nb in NOTEBOOKS].index(notebook)]
+@click.pass_context
+def run(ctx, kernel, formats, ipynb, output, output_dir, convert_args):
+    """Use papermill to run a hera-templates notebook."""
+    ctx.ensure_object(dict)
 
-    if output is None:
-        output = f'{notebook}.ipynb'
-    elif not output.endswith('.ipynb'):
-        output = f'{output}.ipynb'
-
-    print("Executing Notebook.")
-    print(f"Got notebook params: '{params}'")
-    # We might have a params string like "--opt1=this --opt2 that", make this a dict...
-    print([
-        (p.split('=') if '=' in p else p.split(" ")) for p in (' '+params.strip()).split(' --')[1:]
-    ])
-    params = {
-        k.replace("-", "_").upper(): v for k, v in [
-            (p.split('=') if '=' in p else p.split(" ")) for p in (' '+params.strip()).split(' --')[1:]
-        ]
-    }
-    print("Setting the env variables:")
-    for k, v in params.items():
-        print(f"    {k}={v}")
-    
-    sbp.run(
-        [
-            'jupyter', 'nbconvert', 
-            "--output", str(output),
-            "--output-dir", output_dir, 
-            "--to", "notebook",
-            "--execute",
-            "--ExecutePreprocessor.timeout", str(timeout),
-            "--ExecutePreprocessor.kernel_name", kernel,
-            execute_args,
-            str(nbfile)
-        ],
-        env={**params, **os.environ},
-        check=True
-    )
+    ctx.obj['kernel'] = kernel
+    ctx.obj['formats'] = formats
+    ctx.obj['ipynb'] = ipynb
+    ctx.obj['output_dir'] = output_dir
+    ctx.obj['convert_args'] = convert_args
 
 
-    for fmt in formats:
-        print(f"Converting executed notebook to {fmt}...")
-        sbp.run(
-            [
-                'jupyter', 'nbconvert', 
-                "--output", output.replace(".ipynb", f".{fmt}"),
-                "--output-dir", output_dir,
-                "--to", fmt,
-                convert_args,
-                f"{output_dir}/{output}"
-            ],
-            check=True,
+def run_notebook_factory(notebook):
+
+    @click.option('-o', "--basename", type=str, default=None)
+    @click.pass_context
+    def runfunc(ctx, basename, **kwargs):
+        nbfile = NOTEBOOK_DICT[notebook]
+
+        if basename is None:
+            basename = notebook
+        
+        output_path = (Path(ctx.obj['output_dir']) / basename).with_suffix('.ipynb')
+
+        print(f"Executing Notebook and saving to {output_path}")
+        print(f"Got notebook params: '{kwargs}'")
+        
+        pm.execute_notebook(
+            str(nbfile),
+            output_path = output_path,
+            kernel_name = ctx.obj['kernel'],
+            parameters=kwargs,
         )
 
-    if not ipynb:
-        (Path(output_dir) / output).unlink()
+        for fmt in ctx.obj['formats']:
+            print(f"Converting executed notebook to {fmt}...")
+            sbp.run(
+                [
+                    'jupyter', 'nbconvert', 
+                    "--output", f'{basename}.{fmt}',
+                    "--output-dir", str(output_path.parent),
+                    "--to", fmt,
+                    ctx.obj['convert_args'],
+                    str(output_path)
+                ],
+                check=True,
+            )
+
+        if not ctx.obj['ipynb']:
+            output_path.unlink()
+
+    infer = pm.inspect_notebook(str(NOTEBOOK_DICT[notebook]))
+
+    tps = {
+        'str': str,
+        'int': int,
+        'float': float,
+        'bool': bool,
+    }
+    params = [click.option(f"--{param.replace('_', '-')}", type=tps[v['inferred_type_name']], default=v['default'], help=v['help']) for param, v in infer.items()]
+
+    # Add all the parameters:
+    for param in params:
+        runfunc = param(runfunc)
+
+    return click.command(name=notebook)(runfunc)
+
+
+for nb in NOTEBOOK_DICT:
+    run.add_command(run_notebook_factory(nb))
