@@ -100,7 +100,6 @@ def run_notebook_factory(notebook):
         'int': int,
         'float': float,
         'bool': bool,
-        'Path': Path
     }
     params = [click.option(f"--{param.replace('_', '-')}", type=tps[v['inferred_type_name']], default=v['default'], help=v['help']) for param, v in infer.items()]
 
