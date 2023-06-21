@@ -22,7 +22,7 @@ dependencies = [
     "astropy",
     "pyuvdata",
     "uvtools",
-    "hera-qm>=2.1.0",
+    "hera-qm>=2.1.1",
     "hera-calibration>=3.2.2",
     "bokeh",
     "hera-mc",
