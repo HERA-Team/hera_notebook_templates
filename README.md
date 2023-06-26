@@ -26,16 +26,24 @@ execution, and handily makes save-points of the notebook along the way.
 To use the CLI, invoke the `hnote` command:
 
 ```
+hnote --help
+```
+
+This will print out help information. To print out all available notebooks, use
+
+```
 hnote avail
 ```
 
-This will print the list of available notebooks. To run a notebook, use the `run` command:
+To run a notebook, use the `run` command:
 
 ```
 hnote run <notebook_name> <param1>=<value1> <param2>=<value2> ...
 ```
 
-To get a list of the available parameters for a notebook, use the `inspect` command:
+To get a list of the available parameters for a notebook, use the `inspect` command 
+(recall that this is only applicable to the notebooks inside the package, not all
+notebooks in the repo, but this will change over time):
 
 ```
 hnote inspect <notebook_name>
