@@ -2,6 +2,8 @@
 # Copyright 2020 the HERA Project
 # Licensed under the MIT License
 
+from pathlib import Path
+
 from . import utils
 from . import utils_h1c
 
@@ -18,3 +20,5 @@ except ModuleNotFoundError:  # pragma: no cover
     except PackageNotFoundError:
         # package is not installed
         __version__ = "unknown"
+
+NOTEBOOKS = sorted((Path(__file__).parent / "notebooks").glob("*.ipynb"))
