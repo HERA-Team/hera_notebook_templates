@@ -94,7 +94,7 @@ def run_notebook_factory(notebook):
             output_path.unlink()
 
     infer = pm.inspect_notebook(str(NOTEBOOK_DICT[notebook]))
-
+    print("INFER ITEMS: ", infer.items())
     tps = {
         'str': str,
         'int': int,
