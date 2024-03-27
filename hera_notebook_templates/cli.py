@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess as sbp
 import os
 import papermill as pm
+import toml
 
 NOTEBOOK_DICT = {nb.stem: nb for nb in NOTEBOOKS}
 
@@ -42,6 +43,7 @@ def inspect(notebook):
 @click.option("-o", "--output", type=str, default=None)
 @click.option("--output-dir", type=click.Path(exists=True, dir_okay=True, file_okay=False), default='.')
 @click.option('--convert-args', type=str, default='')
+@click.option("--toml", type=click.Path(exists=True, dir_okay=False, file_okay=True), default=None)
 @click.pass_context
 def run(ctx, kernel, formats, ipynb, output, output_dir, convert_args):
     """Use papermill to run a hera-templates notebook."""
@@ -52,7 +54,7 @@ def run(ctx, kernel, formats, ipynb, output, output_dir, convert_args):
     ctx.obj['ipynb'] = ipynb
     ctx.obj['output_dir'] = output_dir
     ctx.obj['convert_args'] = convert_args
-
+    ctx.obj['toml'] = output
 
 def run_notebook_factory(notebook):
 
@@ -65,6 +67,9 @@ def run_notebook_factory(notebook):
             basename = notebook
         
         output_path = (Path(ctx.obj['output_dir']) / basename).with_suffix('.ipynb')
+
+        if ctx.obj['toml'] is not None:
+            kwargs.update(toml.load(ctx.obj['toml']))
 
         print(f"Executing Notebook and saving to {output_path}")
         print(f"Got notebook params: '{kwargs}'")
