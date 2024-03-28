@@ -109,7 +109,7 @@ def run_notebook_factory(notebook):
         click.option(
             f"--{param.replace('_', '-')}", 
             type=tps[v['inferred_type_name']], 
-            default=v['default'], 
+            default=eval(v['default']), 
             help=v['help'],
             show_default=True,
         ) if v['inferred_type_name'] != 'bool' else 
