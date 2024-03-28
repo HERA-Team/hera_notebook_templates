@@ -45,7 +45,7 @@ def inspect(notebook):
 @click.option('--convert-args', type=str, default='')
 @click.option("--toml", type=click.Path(exists=True, dir_okay=False, file_okay=True), default=None)
 @click.pass_context
-def run(ctx, kernel, formats, ipynb, output, output_dir, convert_args):
+def run(ctx, kernel, formats, ipynb, output, output_dir, convert_args, toml):
     """Use papermill to run a hera-templates notebook."""
     ctx.ensure_object(dict)
 
@@ -54,7 +54,7 @@ def run(ctx, kernel, formats, ipynb, output, output_dir, convert_args):
     ctx.obj['ipynb'] = ipynb
     ctx.obj['output_dir'] = output_dir
     ctx.obj['convert_args'] = convert_args
-    ctx.obj['toml'] = output
+    ctx.obj['toml'] = toml
 
 def run_notebook_factory(notebook):
 
@@ -99,7 +99,6 @@ def run_notebook_factory(notebook):
             output_path.unlink()
 
     infer = pm.inspect_notebook(str(NOTEBOOK_DICT[notebook]))
-    print("INFER ITEMS: ", infer.items())
     tps = {
         'str': str,
         'int': int,
