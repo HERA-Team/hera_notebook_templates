@@ -66,7 +66,7 @@ def run_notebook_factory(notebook):
         if basename is None:
             basename = notebook
         
-        output_path = (Path(ctx.obj['output_dir']) / basename).with_suffix('.ipynb')
+        output_path = Path(ctx.obj['output_dir']) / f"{basename}.ipynb"
 
         if ctx.obj['toml'] is not None:
             kwargs.update(toml.load(ctx.obj['toml']))
