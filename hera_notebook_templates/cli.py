@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess as sbp
 import os
 import papermill as pm
+import toml
 
 NOTEBOOK_DICT = {nb.stem: nb for nb in NOTEBOOKS}
 
@@ -42,8 +43,9 @@ def inspect(notebook):
 @click.option("-o", "--output", type=str, default=None)
 @click.option("--output-dir", type=click.Path(exists=True, dir_okay=True, file_okay=False), default='.')
 @click.option('--convert-args', type=str, default='')
+@click.option("--toml", type=click.Path(exists=True, dir_okay=False, file_okay=True), default=None)
 @click.pass_context
-def run(ctx, kernel, formats, ipynb, output, output_dir, convert_args):
+def run(ctx, kernel, formats, ipynb, output, output_dir, convert_args, toml):
     """Use papermill to run a hera-templates notebook."""
     ctx.ensure_object(dict)
 
@@ -52,7 +54,7 @@ def run(ctx, kernel, formats, ipynb, output, output_dir, convert_args):
     ctx.obj['ipynb'] = ipynb
     ctx.obj['output_dir'] = output_dir
     ctx.obj['convert_args'] = convert_args
-
+    ctx.obj['toml'] = toml
 
 def run_notebook_factory(notebook):
 
@@ -64,7 +66,10 @@ def run_notebook_factory(notebook):
         if basename is None:
             basename = notebook
         
-        output_path = (Path(ctx.obj['output_dir']) / basename).with_suffix('.ipynb')
+        output_path = Path(ctx.obj['output_dir']) / f"{basename}.ipynb"
+
+        if ctx.obj['toml'] is not None:
+            kwargs.update(toml.load(ctx.obj['toml']))
 
         print(f"Executing Notebook and saving to {output_path}")
         print(f"Got notebook params: '{kwargs}'")
@@ -94,14 +99,26 @@ def run_notebook_factory(notebook):
             output_path.unlink()
 
     infer = pm.inspect_notebook(str(NOTEBOOK_DICT[notebook]))
-    print("INFER ITEMS: ", infer.items())
     tps = {
         'str': str,
         'int': int,
         'float': float,
         'bool': bool,
     }
-    params = [click.option(f"--{param.replace('_', '-')}", type=tps[v['inferred_type_name']], default=v['default'], help=v['help']) for param, v in infer.items()]
+    params = [
+        click.option(
+            f"--{param.replace('_', '-')}", 
+            type=tps[v['inferred_type_name']], 
+            default=eval(v['default']), 
+            help=v['help'],
+            show_default=True,
+        ) if v['inferred_type_name'] != 'bool' else 
+        click.option(
+            f"--{param.replace('_', '-')}/--no-{param.replace('_', '-')}",  
+            help=v['help']
+        )
+        for param, v in infer.items()
+    ]
 
     # Add all the parameters:
     for param in params:
