@@ -79,6 +79,7 @@ def run_notebook_factory(notebook):
             output_path = output_path,
             kernel_name = ctx.obj['kernel'],
             parameters=kwargs,
+            inject_paths=True
         )
 
         for fmt in ctx.obj['formats']:
