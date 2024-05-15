@@ -105,6 +105,7 @@ def run_notebook_factory(notebook):
         'int': int,
         'float': float,
         'bool': bool,
+        None: None,
     }
     params = [
         click.option(
