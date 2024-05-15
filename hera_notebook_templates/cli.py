@@ -115,7 +115,8 @@ def run_notebook_factory(notebook):
         ) if v['inferred_type_name'] != 'bool' else 
         click.option(
             f"--{param.replace('_', '-')}/--no-{param.replace('_', '-')}",  
-            help=v['help']
+            help=v['help'],
+            default=eval(v['default'])
         )
         for param, v in infer.items()
     ]
