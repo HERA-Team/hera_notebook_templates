@@ -78,8 +78,12 @@ def run_notebook_factory(notebook):
             str(nbfile),
             output_path = output_path,
             kernel_name = ctx.obj['kernel'],
-            parameters=kwargs,
-            inject_paths=True
+            parameters=
+            {
+                'papermill_output_path': str(output_path),
+                'papermill_input_path': str(nbfile),
+                **kwargs,
+            }
         )
 
         for fmt in ctx.obj['formats']:
