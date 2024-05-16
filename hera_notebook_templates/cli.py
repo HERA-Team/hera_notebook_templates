@@ -74,16 +74,14 @@ def run_notebook_factory(notebook):
         print(f"Executing Notebook and saving to {output_path}")
         print(f"Got notebook params: '{kwargs}'")
         
+        kwargs['papermill_output_path'] = str(output_path)
+        kwargs['papermill_input_path'] = str(nbfile)
+
         pm.execute_notebook(
             str(nbfile),
             output_path = output_path,
             kernel_name = ctx.obj['kernel'],
-            parameters=
-            {
-                'papermill_output_path': str(output_path),
-                'papermill_input_path': str(nbfile),
-                **kwargs,
-            }
+            parameters= kwargs,
         )
 
         for fmt in ctx.obj['formats']:
