@@ -74,11 +74,14 @@ def run_notebook_factory(notebook):
         print(f"Executing Notebook and saving to {output_path}")
         print(f"Got notebook params: '{kwargs}'")
         
+        kwargs['papermill_output_path'] = str(output_path)
+        kwargs['papermill_input_path'] = str(nbfile)
+
         pm.execute_notebook(
             str(nbfile),
             output_path = output_path,
             kernel_name = ctx.obj['kernel'],
-            parameters=kwargs,
+            parameters= kwargs,
         )
 
         for fmt in ctx.obj['formats']:
@@ -104,6 +107,7 @@ def run_notebook_factory(notebook):
         'int': int,
         'float': float,
         'bool': bool,
+        None: None,
     }
     params = [
         click.option(
@@ -115,7 +119,8 @@ def run_notebook_factory(notebook):
         ) if v['inferred_type_name'] != 'bool' else 
         click.option(
             f"--{param.replace('_', '-')}/--no-{param.replace('_', '-')}",  
-            help=v['help']
+            help=v['help'],
+            default=eval(v['default'])
         )
         for param, v in infer.items()
     ]
