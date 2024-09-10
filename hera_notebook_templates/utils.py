@@ -435,7 +435,7 @@ def get_ant_key(x, ant):
 def auto_waterfall_lineplot(uv, ant, jd, pols=['xx','yy'], colorbar_min=1e6, colorbar_max=1e8, title=''):
     h = cm_active.get_active(at_date=jd, float_format="jd")
     status = get_ant_status(h, ant)
-    freq = uv.freq_array[0]*1e-6
+    freq = uv.freq_array*1e-6
     fig = plt.figure(figsize=(12,8))
     gs = gridspec.GridSpec(3, 2, height_ratios=[2,0.7,1])
     it = 0
@@ -455,7 +455,7 @@ def auto_waterfall_lineplot(uv, ant, jd, pols=['xx','yy'], colorbar_min=1e6, col
                     aspect='auto')
         abb = status_abbreviations[status]
         waterfall.set_title(f'{pol_dirs[p]} pol')
-        freqs = uv.freq_array[0, :] / 1000000
+        freqs = uv.freq_array[:] / 1000000
         xticks = np.arange(0, len(freqs), 120)
         plt.xticks(xticks, labels =np.around(freqs[xticks],2))
         if p == 0:
@@ -515,7 +515,7 @@ def plot_autos(uvdx, uvdy):
     nodes, antDict, inclNodes = generate_nodeDict(uvdx)
     ants = uvdx.get_ants()
     sorted_ants = sort_antennas(uvdx)
-    freqs = (uvdx.freq_array[0])*10**(-6)
+    freqs = (uvdx.freq_array)*10**(-6)
     times = uvdx.time_array
     lsts = uvdx.lst_array  
     maxants = 0
@@ -584,7 +584,7 @@ def plot_wfs(uvd, pol, mean_sub=False, save=False, jd='',auto_scale=True,vmin=6.
     nodes, antDict, inclNodes = generate_nodeDict(uvd)
     ants = uvd.get_ants()
     sorted_ants = sort_antennas(uvd)
-    freqs = (uvd.freq_array[0])*10**(-6)
+    freqs = (uvd.freq_array)*10**(-6)
     times = uvd.time_array
     lsts = uvd.lst_array*3.819719
     inds = np.unique(lsts,return_index=True)[1]
@@ -669,7 +669,7 @@ def plot_wfs(uvd, pol, mean_sub=False, save=False, jd='',auto_scale=True,vmin=6.
     
     
 def plot_mean_subtracted_wfs(uvd, use_ants, jd, pols=['xx','yy']):
-    freqs = (uvd.freq_array[0])*1e-6
+    freqs = (uvd.freq_array)*1e-6
     times = uvd.time_array
     lsts = uvd.lst_array*3.819719
     inds = np.unique(lsts,return_index=True)[1]
@@ -871,7 +871,7 @@ def plotVisibilitySpectra(file,jd,use_ants='auto',badAnts=[],pols=['xx','yy']):
     uv.read_uvh5(file)
     x = cm_hookup.get_hookup('default')
     baseline_groups = get_baseline_groups(uv,use_ants="auto")
-    freqs = uv.freq_array[0]/1000000
+    freqs = uv.freq_array/1000000
     loc = EarthLocation.from_geocentric(*uv.telescope_location, unit='m')
     obstime_start = Time(uv.time_array[0],format='jd',location=loc)
     startTime = obstime_start.sidereal_time('mean').hour
@@ -1107,7 +1107,7 @@ def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
     None
     """
     nants = len(uvd_sum.get_ants())
-    freqs = uvd_sum.freq_array[0]*1e-6
+    freqs = uvd_sum.freq_array*1e-6
     nfreqs = len(freqs)
     lsts = np.unique(uvd_sum.lst_array*3.819719)
     sm = np.abs(uvd_sum.data_array[:,0,:,0])
@@ -1829,7 +1829,7 @@ def sort_antennas(uv):
 
 def plot_crosses(uvd, ref_ant):
     ants = uvd.get_ants()
-    freqs = (uvd.freq_array[0])*10**(-6)
+    freqs = (uvd.freq_array)*10**(-6)
     times = uvd.time_array
     lsts = uvd.lst_array
     
@@ -1941,7 +1941,7 @@ def _clean_per_bl_pol(bl, pol, uvd, uvd_diff, area, tol, skip_wgts, freq_range):
         CLEANed odd visibilities, formatted as _d_odd[(ant1, ant2, pol)]
     """
     key = (bl[0], bl[1], pol)
-    freqs = uvd.freq_array[0]
+    freqs = uvd.freq_array
     FM_idx = np.searchsorted(freqs*1e-6, [85,110])
     flag_FM = np.zeros(freqs.size, dtype=bool)
     flag_FM[FM_idx[0]:FM_idx[1]] = True
@@ -2041,7 +2041,7 @@ def plot_wfds(uvd, _data_sq, pol):
     nodes, antDict, inclNodes = generate_nodeDict(uvd)
     ants = uvd.get_ants()
     sorted_ants = sort_antennas(uvd)
-    freqs = uvd.freq_array[0]
+    freqs = uvd.freq_array
     taus = np.fft.fftshift(np.fft.fftfreq(freqs.size, np.diff(freqs)[0]))*1e9
     times = uvd.time_array
     lsts = uvd.lst_array*3.819719
@@ -2203,7 +2203,7 @@ def plot_antFeatureMap_2700ns(uvd, _data_sq, JD, pol='ee'):
      29: {'pos': [21.42885912979846, -30.72052728164184],
       'ants': [277, 278, 292, 293, 294, 306, 307, 319, 344, 345, 349]}}
 
-    freqs = uvd.freq_array[0]
+    freqs = uvd.freq_array
     taus = np.fft.fftshift(np.fft.fftfreq(freqs.size, np.diff(freqs)[0]))*1e9
     idx_region1 = np.where(np.logical_and(taus > 2500, taus < 3000))[0]
     idx_region2 = np.where(np.logical_and(taus > 2000, taus < 2500))[0]
@@ -2342,7 +2342,7 @@ def plot_antFeatureMap_noise(uvd, d_even, d_odd, JD, pol='ee'):
      29: {'pos': [21.42885912979846, -30.72052728164184],
       'ants': [277, 278, 292, 293, 294, 306, 307, 319, 344, 345, 349]}}
 
-    freqs = uvd.freq_array[0]
+    freqs = uvd.freq_array
     taus = np.fft.fftshift(np.fft.fftfreq(freqs.size, np.diff(freqs)[0]))*1e9
     idx_region = np.where(taus > 1000)[0]
 
@@ -2406,7 +2406,7 @@ def plot_antFeatureMap_noise(uvd, d_even, d_odd, JD, pol='ee'):
     cbar.set_label('Ratio of delay spectrum to noise floor (dB)')
     
 def get_ds_noise_ratio(uvd, uvd_diff, bls):
-    freqs = uvd.freq_array[0]*1e-6
+    freqs = uvd.freq_array*1e-6
     
     pols = ['nn', 'ee']
     freqs1 = [40, 50, 120, 155, 190]
@@ -2457,7 +2457,7 @@ def interactive_plots_dspec(bls, uvd, uvd_diff, JD):
 
     output_notebook(hide_banner=True)
     
-    freqs = uvd.freq_array[0]
+    freqs = uvd.freq_array
 
     FM_idx = np.searchsorted(freqs*1e-6, [85,110])
     flag_FM = np.zeros(freqs.size, dtype=bool)
@@ -2693,7 +2693,7 @@ def CorrMatrix_2700ns(uvd, HHfiles, difffiles, flagfile, JD, N_threads=12):
 
         _d_cleaned_sq = clean_ds(bls, uvd_data_ds, uvd_diff_ds, pols=pols, area=area, return_option='dspec', N_threads=N_threads)
 
-        freqs = uvd_data_ds.freq_array[0]
+        freqs = uvd_data_ds.freq_array
         taus = np.fft.fftshift(np.fft.fftfreq(freqs.size, np.diff(freqs)[0]))*1e9
         idx_region1 = np.where(np.logical_and(taus > 2500, taus < 3000))[0]
         idx_region2 = np.where(np.logical_and(taus > 2000, taus < 2500))[0]
