@@ -580,7 +580,7 @@ def plot_autos(uvdx, uvdy):
     plt.close()
     
 def plot_wfs(uvd, pol, mean_sub=False, save=False, jd='',auto_scale=True,vmin=6.5,vmax=8):
-    amps = np.abs(uvd.data_array[:, :, :, pol].reshape(uvd.Ntimes, uvd.Nants_data, uvd.Nfreqs, 1))
+    amps = np.abs(uvd.data_array[:, :, pol].reshape(uvd.Ntimes, uvd.Nants_data, uvd.Nfreqs, 1))
     nodes, antDict, inclNodes = generate_nodeDict(uvd)
     ants = uvd.get_ants()
     sorted_ants = sort_antennas(uvd)
