@@ -1110,8 +1110,8 @@ def plotEvenOddWaterfalls(uvd_sum, uvd_diff):
     freqs = uvd_sum.freq_array*1e-6
     nfreqs = len(freqs)
     lsts = np.unique(uvd_sum.lst_array*3.819719)
-    sm = np.abs(uvd_sum.data_array[:,0,:,0])
-    df = np.abs(uvd_diff.data_array[:,0,:,0])
+    sm = np.abs(uvd_sum.data_array[:,:,0])
+    df = np.abs(uvd_diff.data_array[:,:,0])
     sm = np.r_[sm, np.nan + np.zeros((-len(sm) % nants,len(freqs)))]
     sm = np.nanmean(sm.reshape(-1,nants,nfreqs), axis=1)
     df = np.r_[df, np.nan + np.zeros((-len(df) % nants,len(freqs)))]
