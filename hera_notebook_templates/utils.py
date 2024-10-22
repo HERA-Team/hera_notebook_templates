@@ -18,7 +18,7 @@ import healpy
 import scipy
 from pyuvdata import UVCal, UVData, UVFlag, utils
 
-from astropy.time import Time
+from astropy.time import Time, TimeDelta
 from astropy.coordinates import EarthLocation, AltAz, Angle
 from astropy.coordinates import SkyCoord as sc
 from astropy.io import fits
@@ -37,11 +37,10 @@ import matplotlib.patches as mpatches
 import matplotlib.gridspec as gridspec
 from matplotlib.ticker import FormatStrFormatter
 from matplotlib.lines import Line2D
-from matplotlib import colors
+from matplotlib import colors, cm
 
 import hera_qm
-from hera_mc import cm_hookup, geo_sysdef
-from hera_mc import cm_active
+from hera_mc import cm_hookup, geo_sysdef, cm_active, mc
 import uvtools as uvt
 from uvtools import dspec
 
@@ -2985,3 +2984,181 @@ class Antenna:
             return sorted(mms.items(), key=lambda item: item[1])[-1][0]            
             
         return np.nan
+
+def plot_multi_freqs(uvd,uvdx,uvdy,HHautos,JD,freqind = [0,200,400,600,800,1000,1200,1400,1530],pols=['NN','EE'], use_database = True, array_signal = 'antenna'):
+    """Plot power vs time for a collection of individual frequencies; also create an accompanying power vs frequency plot for a single time within the night.
+    
+    Parameters:
+    ----------
+    uvd: UVData Object
+        Object containing autos from sum files. Used for getting antenna information.
+    uvdx: UVData Object
+        Sample observations from a single time during the desired night, on the xx (NN) polarization.
+    uvdy:
+        Sample observations from a single time during the desired night, on the yy (EE) polarization.
+    freqind: List
+        Frequency array index values. Allows for evenly spaced frequencies to be easily chosen and plotted.
+        Default values are [0,200,400,600,800,1000,1200,1400,1530], which correspond to freqeuncies [46.9, 71.3, 95.7, 120.2, 144.6, 169.0,
+        193.4, 217.8, 233.7] MHz.
+    pols: List
+        Polarizations to plot. Can include any polarization strings accepted by pyuvdata.
+    use_database: Boolean
+        Option to attempt using the database to determine the array's commanded observing mode on the desired night. Default is True.
+    array_signal: String
+        Used to manually specify the expected array mode if use_database is set to False, or if database doesn't return an array mode.
+        Must be one of these values: 'antenna','noise','load','digital_noise_same','digital_noise_different'. Default is 'antenna'.
+        
+    Returns:
+    -------
+    None
+    """
+   
+    if use_database is True:
+        try:
+            db = mc.connect_to_mc_db(None)
+            session = db.sessionmaker()
+            startJD = float(HHautos[0].split('zen.')[1].split('.sum')[0])
+            stopJD = float(HHautos[-1].split('zen.')[1].split('.sum')[0])
+            start_time = Time(startJD,format='jd')
+            stop_time = Time(stopJD,format='jd')
+            # get initial state by looking for commands up to 3 hours before the starttime
+            # this logic can be improved after an upcoming hera_mc PR
+            # which will return the most recent command before a particular time.
+            search_start_time = start_time - TimeDelta(3*3600, format="sec")
+            initial_command_res = session.get_array_signal_source(starttime=search_start_time, stoptime=start_time)
+            if len(initial_command_res) == 0:
+                initial_source = "Unknown"
+            elif len(initial_command_res) == 1:
+                initial_source = initial_command_res[0].source
+            else:
+                # multiple commands
+                times = []
+                sources = []
+                for obj in initial_command_res:
+                    times.append(obj.time)
+                    sources.append(obj.source)
+                initial_source = sources[np.argmax(times)]
+        except Exception as e:
+            print(e)
+            initial_source = None
+
+        if initial_source is None:
+            print(f"Database not found. Assuming array mode is '{array_signal}'.")
+        elif initial_source == 'Unknown':
+            print(f"Array mode not found. Assuming array mode is {array_signal}")
+        else:
+            print(f"Using database; array mode is '{initial_source}'. Some antennas may work in a different mode due to communication error.")
+    else:
+        if array_signal not in ['antenna','noise','load','digital_noise_same','digital_noise_different']:
+            raise ValueError("array_signal must be one of these values: 'antenna','noise','load','digital_noise_same','digital_noise_different'")
+        else:
+            print(f"use_database set to False. Assuming array mode is '{array_signal}'.")
+
+            
+    plt.subplots_adjust(hspace=.0)
+    cmap = cm.get_cmap("plasma")
+    loc = EarthLocation.from_geocentric(*uvd.telescope_location, unit='m')
+    freq_array = uvd.freq_array[0]*1e-6
+    freqs_use = freq_array[freqind]
+    times = uvdx.time_array
+    lsts = uvd.lst_array*3.819719
+    inds = np.unique(lsts,return_index=True)[1]
+    lsts = np.asarray([lsts[ind] for ind in sorted(inds)])
+    color_ind = np.linspace(0,1,len(freqind))
+
+    nodes, antDict, inclNodes = generate_nodeDict(uvdx)
+    ants = uvdx.get_ants()
+    sorted_ants = sort_antennas(uvdx)
+    #maxants = 0
+    #for node in nodes:
+        #n = len(nodes[node]['ants'])
+        #if n>maxants:
+            #maxants = n
+    
+    #Nants = len(ants)
+    #Nside = maxants
+    #Yside = len(inclNodes)
+    
+    #t_index = 0
+    #jd = times[t_index]
+    # utc = Time(jd, format='jd').datetime
+    
+    h = cm_active.get_active(at_date=JD, float_format="jd")
+    
+    state_plots = {'antenna': (0, 4e7, 'black', 1), 'noise' : (0, 4e6, 'cornflowerblue', 2), 'load' : (0,4e6,'green',2), 'digital_noise_same' : (1e7,4e7,'indigo',2), 'digital_noise_different': (1e7,4e7,'palevioletred',2)}
+    if use_database is True and (initial_source is not None and initial_source != "Unknown"):
+        mymin, mymax, my_color, my_linewidth = state_plots[initial_source]
+    else:
+        mymin, mymax, my_color, my_linewidth = state_plots[array_signal] 
+                
+    for i,n in enumerate(inclNodes):
+        ants = nodes[n]['ants']
+        j = 0
+        k = 0
+        for _,a in enumerate(sorted_ants):
+            if a not in ants:
+                continue
+            snaploc = antDict[a]['snapLocs']
+            snapinput = antDict[a]['snapInput']
+            fig = plt.figure(constrained_layout=True, figsize=(20, 4))
+            subfigs = fig.subfigures(1, 2, wspace=0.07, width_ratios=[2, 1])
+            axsLeft = subfigs[0].subplots(1, 2, sharey=True)
+            dat = np.abs(uvd.get_data(a,a))
+            status = get_ant_status(h, a)
+            abb = status_abbreviations[status]
+            for j,p in enumerate(pols):
+                ax = axsLeft[j]
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                for f,freq in enumerate(freqind):
+                    ax.plot(dat[:,freq,j],label=np.around(freq_array[freq],1),color=cmap(color_ind[f]),linewidth=0.95)
+                    if a==0 and j==0:
+                        ax.legend()
+                    ax.set_title(f'{p}', fontsize = 14)
+                    ax.set_xlabel('LST (hours)')
+                    ax.set_ylabel('Power (amp)')
+                    xticks = [int(i) for i in np.linspace(0,len(lsts)-1, 5)]
+                    ax.set_xticks(xticks)
+                    ax.set_xticklabels(np.around(lsts[xticks], 2))
+                    sm = cm.ScalarMappable(cmap=cmap)
+                    if np.mean(dat)>mymin and np.mean(dat)<mymax:
+                        ax.set_ylim(mymin, mymax)
+                        ax.spines['left'].set_color(my_color)
+                        ax.spines['left'].set_linewidth(my_linewidth)
+                        ax.spines['right'].set_color(my_color)
+                        ax.spines['right'].set_linewidth(my_linewidth)
+                        ax.spines['bottom'].set_color(my_color)
+                        ax.spines['bottom'].set_linewidth(my_linewidth)
+                        ax.spines['top'].set_color(my_color)
+                        ax.spines['top'].set_linewidth(my_linewidth)
+                    else:
+                        ax.set_ylim(auto=True)
+                        ax.spines['left'].set_color('red')
+                        ax.spines['left'].set_linewidth(2)
+                        ax.spines['right'].set_color('red')
+                        ax.spines['right'].set_linewidth(2)
+                        ax.spines['bottom'].set_color('red')
+                        ax.spines['bottom'].set_linewidth(2)
+                        ax.spines['top'].set_color('red')
+                        ax.spines['top'].set_linewidth(2)
+                    
+            axsRight = subfigs[1].subplots(1, 1, sharex=True)
+            sm = cm.ScalarMappable(cmap=cmap)
+            axsRight.vlines(freqs_use,55,85,
+                color = cmap(color_ind),
+                linewidth = 1,
+                linestyle = '--')
+            axsRight.set_ylim(55,85)
+            px, = axsRight.plot(freq_array, 10*np.log10(np.abs(uvdx.get_data((a, a))[0]+1000)), color='#006837', alpha=0.75, linewidth=1.2)
+            py, = axsRight.plot(freq_array, 10*np.log10(np.abs(uvdy.get_data((a, a))[0])), color='#a6611a', alpha=0.75, linewidth=1.2)
+            axsRight.grid(False, which='both')
+            axsRight.set_title(f'Auto-correlation (both pols)', fontsize=14)
+            axsRight.set_xlabel('freq (MHz)')
+            axsRight.set_ylabel(r'$10\cdot\log$(amp)')
+            axsRight.set_xticks(freqs_use)
+            
+            if k == 0:
+                axsRight.legend([px, py], ['NN', 'EE'])
+            fig.suptitle(f'Antenna {a} ({abb})\nNode {n} Snap {snaploc[0]} Input {snapinput[0]}',fontsize=20,backgroundcolor=status_colors[status],y=1.2)
+            plt.show()
+            plt.close() 
