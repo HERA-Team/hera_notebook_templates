@@ -108,6 +108,7 @@ def run_notebook_factory(notebook):
         'float': float,
         'bool': bool,
         None: None,
+        "Path": Path,
     }
     params = [
         click.option(
