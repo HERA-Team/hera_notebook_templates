@@ -70,10 +70,10 @@ def run_notebook_factory(notebook):
         output_path = Path(ctx.obj['output_dir']) / f"{basename}.ipynb"
 
         if ctx.obj['toml'] is not None:
-            toml = toml.load(ctx.obj['toml'])
+            cfg = toml.load(ctx.obj['toml'])
             if ctx.obj['toml_section'] is not None:
-                toml = toml[ctx.obj['toml_section']]
-            kwargs.update(toml)
+                cfg = cfg[ctx.obj['toml_section']]
+            kwargs.update(cfg)
 
         print(f"Executing Notebook and saving to {output_path}")
         print(f"Got notebook params: '{kwargs}'")
