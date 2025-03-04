@@ -40,12 +40,12 @@ def inspect(notebook):
 @click.option("-k", "--kernel", type=click.Choice(list(avail_kernels.keys())), default="python3")
 @click.option("-f", "--formats", type=str, multiple=True, default=['html'])
 @click.option("--ipynb/--no-ipynb", default=True)
-@click.option("-o", "--output", type=str, default=None)
 @click.option("--output-dir", type=click.Path(exists=True, dir_okay=True, file_okay=False), default='.')
 @click.option('--convert-args', type=str, default='')
 @click.option("--toml", type=click.Path(exists=True, dir_okay=False, file_okay=True), default=None)
+@click.option("--toml-section", type=str, default=None)
 @click.pass_context
-def run(ctx, kernel, formats, ipynb, output, output_dir, convert_args, toml):
+def run(ctx, kernel, formats, ipynb, output_dir, convert_args, toml, toml_section):
     """Use papermill to run a hera-templates notebook."""
     ctx.ensure_object(dict)
 
@@ -55,6 +55,7 @@ def run(ctx, kernel, formats, ipynb, output, output_dir, convert_args, toml):
     ctx.obj['output_dir'] = output_dir
     ctx.obj['convert_args'] = convert_args
     ctx.obj['toml'] = toml
+    ctx.obj['toml_section'] = toml_section
 
 def run_notebook_factory(notebook):
 
@@ -69,7 +70,10 @@ def run_notebook_factory(notebook):
         output_path = Path(ctx.obj['output_dir']) / f"{basename}.ipynb"
 
         if ctx.obj['toml'] is not None:
-            kwargs.update(toml.load(ctx.obj['toml']))
+            cfg = toml.load(ctx.obj['toml'])
+            if ctx.obj['toml_section'] is not None:
+                cfg = cfg[ctx.obj['toml_section']]
+            kwargs.update(cfg)
 
         print(f"Executing Notebook and saving to {output_path}")
         print(f"Got notebook params: '{kwargs}'")
