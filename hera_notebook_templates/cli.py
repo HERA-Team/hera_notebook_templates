@@ -118,7 +118,7 @@ def run_notebook_factory(notebook):
         click.option(
             f"--{param.replace('_', '-')}",
             f"--{param.replace('_', '-')}",
-            param.replace("_", "-"),
+            param,
             type=tps[v['inferred_type_name']], 
             default=eval(v['default']), 
             help=v['help'],
@@ -132,13 +132,16 @@ def run_notebook_factory(notebook):
         for param, v in infer.items()
     ]
 
-    print("HERE ARE THE PARAMS BEFORE SETTING AS OPTIONS:", params)
     # Add all the parameters:
     for param in params:
         runfunc = param(runfunc)
 
     return click.command(name=notebook)(runfunc)
 
-
+@main.command()
+@click.option('--tempId', '--tempId', 'temp_Id', default=None, help='tempId')
+def test(**kwargs):
+    print(kwargs)
+    
 for nb in NOTEBOOK_DICT:
     run.add_command(run_notebook_factory(nb))
