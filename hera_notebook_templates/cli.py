@@ -130,6 +130,7 @@ def run_notebook_factory(notebook):
         for param, v in infer.items()
     ]
 
+    print("HERE ARE THE PARAMS BEFORE SETTING AS OPTIONS:", params)
     # Add all the parameters:
     for param in params:
         runfunc = param(runfunc)
