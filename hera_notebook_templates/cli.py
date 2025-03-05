@@ -5,7 +5,6 @@ from . import NOTEBOOKS
 import jupyter_client
 from pathlib import Path
 import subprocess as sbp
-import os
 import papermill as pm
 import toml
 
