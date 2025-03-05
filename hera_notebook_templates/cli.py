@@ -126,6 +126,7 @@ def run_notebook_factory(notebook):
         ) if v['inferred_type_name'] != 'bool' else 
         click.option(
             f"--{param.replace('_', '-')}/--no-{param.replace('_', '-')}",  
+            param,
             help=v['help'],
             default=eval(v['default'])
         )
@@ -138,10 +139,11 @@ def run_notebook_factory(notebook):
 
     return click.command(name=notebook)(runfunc)
 
-@main.command()
-@click.option('--tempId', '--tempId', 'temp_Id', default=None, help='tempId')
-def test(**kwargs):
-    print(kwargs)
+# @main.command()
+# @click.option('--tempId', '--tempId', 'temp_Id', default=None, help='tempId')
+# @click.option("--doit/--no-doit", "dSPURT", default=True)
+# def test(**kwargs):
+#     print(kwargs)
     
 for nb in NOTEBOOK_DICT:
     run.add_command(run_notebook_factory(nb))
