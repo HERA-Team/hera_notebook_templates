@@ -118,7 +118,7 @@ def run_notebook_factory(notebook):
         click.option(
             f"--{param.replace('_', '-')}",
             f"--{param.replace('_', '-')}",
-            param.replace("_", "-") 
+            param.replace("_", "-"),
             type=tps[v['inferred_type_name']], 
             default=eval(v['default']), 
             help=v['help'],
