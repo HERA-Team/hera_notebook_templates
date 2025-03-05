@@ -68,6 +68,7 @@ def run_notebook_factory(notebook):
         
         output_path = Path(ctx.obj['output_dir']) / f"{basename}.ipynb"
 
+        print("These are the input kwargs: ", kwargs)
         if ctx.obj['toml'] is not None:
             cfg = toml.load(ctx.obj['toml'])
             if ctx.obj['toml_section'] is not None:
