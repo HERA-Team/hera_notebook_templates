@@ -2993,7 +2993,7 @@ def parse_band_str(band_str: str, freqs: np.ndarray) -> tuple[float, list[float]
     min_freqs = [(np.min(freqs[freqs >= (1e6 * b[0])]) - df / 2) / 1e6 for b in bands]
     max_freqs = [(np.max(freqs[freqs <= (1e6 * b[1])]) + df / 2) / 1e6 for b in bands]
     min_chan = [np.where(freqs >= 1e6 * b[0])[0][0] for b in bands]
-    max_chan = [np.where(freqs <= 1e6 * b[0])[0][-1] for b in bands]
+    max_chan = [np.where(freqs <= 1e6 * b[1])[0][-1] for b in bands]
     band_slices = [slice(minc, maxc+1) for minc, maxc in zip(min_chan, max_chan)]
     nchans = [maxc - minc + 1 for minc, maxc in zip(min_chan, max_chan)]
     
