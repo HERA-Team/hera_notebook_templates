@@ -2986,7 +2986,7 @@ class Antenna:
             
         return np.nan
 
-def parse_band_str(band_str: str, freqs: np.ndarray) -> tuple[float, list[float], list[float], list[slice], list[int]]:
+def parse_band_str(band_str: str, freqs: np.ndarray) -> tuple[float, list[float], list[float], list[float], list[slice], list[int]]:
     """Parse a band string into a channel width and a list of slices."""
     df = np.median(np.diff(freqs))
     bands = [tuple([float(edge) for edge in band.split('~')]) for band in band_str.strip().split(',')]
@@ -2999,6 +2999,7 @@ def parse_band_str(band_str: str, freqs: np.ndarray) -> tuple[float, list[float]
     
     return (
         df,
+        bands,
         min_freqs, 
         max_freqs, 
         band_slices,
