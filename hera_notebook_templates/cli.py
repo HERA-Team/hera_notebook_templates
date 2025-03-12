@@ -5,7 +5,6 @@ from . import NOTEBOOKS
 import jupyter_client
 from pathlib import Path
 import subprocess as sbp
-import os
 import papermill as pm
 import toml
 
@@ -58,10 +57,24 @@ def run(ctx, kernel, formats, ipynb, output_dir, convert_args, toml, toml_sectio
     ctx.obj['toml_section'] = toml_section
 
 def run_notebook_factory(notebook):
+    """Factory function for creating a run command for a specific notebook.
 
-    @click.option('-o', "--basename", type=str, default=None)
+    Parameters
+    ----------
+    notebook : str
+        The name of the notebook to create a command for.
+    """
+    @click.option('-o', "--basename", type=str, default=None, help="The basename of the output notebook (without extension). Defaults to the notebook name.")
+    @click.option("--extra-param-behaviour", type=click.Choice(['error', 'ignore', 'warn']), default='error')
     @click.pass_context
-    def runfunc(ctx, basename, **kwargs):
+    def runfunc(ctx, basename, extra_param_behaviour, **kwargs):
+        f"""Run the {notebook} notebook."""
+        # This function is the actual command that will be run when the user runs 
+        # "hnote run <notebook>". It will execute the notebook, and then convert it
+        # to the specified formats. The **kwargs contain all the parameters specified
+        # in the notebook itself (they are put onto this function by the run_notebook_factory
+        # function after this function definition).
+        
         nbfile = NOTEBOOK_DICT[notebook]
 
         if basename is None:
@@ -69,11 +82,27 @@ def run_notebook_factory(notebook):
         
         output_path = Path(ctx.obj['output_dir']) / f"{basename}.ipynb"
 
+        # Load a toml file, if specified, to read in parameters for the notebook.
+        # These parameters will override any defaults, AND any parameters passed on
+        # the command line. 
         if ctx.obj['toml'] is not None:
-            toml = toml.load(ctx.obj['toml'])
+            cfg = toml.load(ctx.obj['toml'])
             if ctx.obj['toml_section'] is not None:
-                toml = toml[ctx.obj['toml_section']]
-            kwargs.update(toml)
+                cfg = cfg[ctx.obj['toml_section']]
+
+            # Check that all the parameters in the TOML actually exist in the notebook.
+            # This is useful for catching errors where the TOML file has something 
+            # mis-spelled (or the wrong case), and would otherwise just pass silently
+            # without the parameter being properly set in the notebook.
+            for name in cfg:
+                if name not in kwargs:
+                    if extra_param_behaviour == 'error':
+                        raise ValueError(f"Parameter '{name}' not found in notebook parameters.")
+                    elif extra_param_behaviour == 'warn':
+                        print(f"Warning: Parameter '{name}' not found in notebook parameters.")
+                    elif extra_param_behaviour == 'ignore':
+                        pass
+            kwargs.update(cfg)
 
         print(f"Executing Notebook and saving to {output_path}")
         print(f"Got notebook params: '{kwargs}'")
@@ -81,6 +110,7 @@ def run_notebook_factory(notebook):
         kwargs['papermill_output_path'] = str(output_path)
         kwargs['papermill_input_path'] = str(nbfile)
 
+        # Go ahead and execute the notebook with the given parameters.
         pm.execute_notebook(
             str(nbfile),
             output_path = output_path,
@@ -88,6 +118,9 @@ def run_notebook_factory(notebook):
             parameters= kwargs,
         )
 
+        # Convert the executed notebook to the specified formats.   
+        # The formats comes from the upper-level command "run", and passed through
+        # to here in the context object.
         for fmt in ctx.obj['formats']:
             print(f"Converting executed notebook to {fmt}...")
             sbp.run(
@@ -105,6 +138,7 @@ def run_notebook_factory(notebook):
         if not ctx.obj['ipynb']:
             output_path.unlink()
 
+    # Infer the parameters from the notebook, and create the appropriate click options
     infer = pm.inspect_notebook(str(NOTEBOOK_DICT[notebook]))
     tps = {
         'str': str,
@@ -114,9 +148,14 @@ def run_notebook_factory(notebook):
         None: None,
         "Path": Path,
     }
+    # need to pass the actual parameter name to set the variable name in the function,
+    # (third argument to click.option), otherwise click casts everything to lower-case, 
+    # which breaks the notebook.
     params = [
         click.option(
-            f"--{param.replace('_', '-')}", 
+            f"--{param.replace('_', '-')}",
+            f"--{param.replace('_', '-')}",
+            param,  
             type=tps[v['inferred_type_name']], 
             default=eval(v['default']), 
             help=v['help'],
@@ -124,6 +163,7 @@ def run_notebook_factory(notebook):
         ) if v['inferred_type_name'] != 'bool' else 
         click.option(
             f"--{param.replace('_', '-')}/--no-{param.replace('_', '-')}",  
+            param,
             help=v['help'],
             default=eval(v['default'])
         )
@@ -134,8 +174,8 @@ def run_notebook_factory(notebook):
     for param in params:
         runfunc = param(runfunc)
 
+    runfunc.__doc__ = f"Run the {notebook} notebook."
     return click.command(name=notebook)(runfunc)
-
-
+    
 for nb in NOTEBOOK_DICT:
     run.add_command(run_notebook_factory(nb))
