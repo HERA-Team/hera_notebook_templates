@@ -27,7 +27,9 @@ dependencies = [
     "bokeh",
     "hera-mc",
     "jupyter",
-    "memory-profiler"
+    "memory-profiler",
+    "papermill",
+    "toml",
 ]
 dynamic = [
     "version",
