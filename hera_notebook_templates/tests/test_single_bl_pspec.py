@@ -8,7 +8,9 @@ import pytest
 DATA_PATH = Path(__file__).parent / "data"
 
 def test_single_bl_pspec(tmp_path):
-    pytest.xfail("We don't have the beam file in the repo because it's too big")
+    if not (DATA_PATH / "NF_HERA_Vivaldi_efield_beam_healpix.fits").exists():    
+        pytest.xfail("We don't have the beam file in the repo because it's too big")
+    
     runner = CliRunner()
     out = runner.invoke(
         cli.run, 
@@ -20,7 +22,7 @@ def test_single_bl_pspec(tmp_path):
             "--BAND-STR", '108.1~115.8,117.3~124.4,125.5~135.9,138.8~147.1,150.3~161.4',
             "--FR-SPECTRA-FILE", str(DATA_PATH / "frf_spectra_cache_downsampled.h5"),
             "--USE-BAND-AVG-NSAMPLES",
-            
+            "--EFIELD-HEALPIX-BEAM-FILE", str(DATA_PATH / "NF_HERA_Vivaldi_efield_beam_healpix.fits")
         ]
     )
     
