@@ -146,7 +146,8 @@ def run_notebook_factory(notebook):
         'float': float,
         'bool': bool,
         None: None,
-        "Path": Path,
+        'None': str,
+        'Path': Path,
     }
     # need to pass the actual parameter name to set the variable name in the function,
     # (third argument to click.option), otherwise click casts everything to lower-case, 
