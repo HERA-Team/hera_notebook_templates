@@ -719,6 +719,56 @@ def plot_mean_subtracted_wfs(uvd, use_ants, jd, pols=['xx','yy']):
             fig.colorbar(im, cax=cbar_ax)
     fig.show()
 
+def stacked_wfs(data1, data2, time, name1="Mean Subtracted", name2="Shifted/Subtracted"):
+    fig, ax = plt.subplots(1, 1, figsize=(16, 12))
+
+    # Setup x-tick locations
+    freq_tick_inds = np.concatenate((np.arange(0, uv.Nfreqs, 16), [uv.Nfreqs-1]))
+    freqs_MHz = uv.freq_array[freq_tick_inds] * 1e-6
+    nrows = data1.shape[0]
+
+    # Plot top half (mean-subtracted, viridis)
+    im1 = ax.imshow(data1, aspect='auto', interpolation='none', vmin=-0.1, vmax=0.1,
+                    extent=[uv.freq_array[0]*1e-6, uv.freq_array[-1]*1e-6, nrows, 0], cmap='viridis')
+    
+    #im1 = ax.imshow(data1, aspect='auto', interpolation='none', vmin=-0.1, vmax=0.1,cmap='viridis')
+
+    # Plot bottom half (shifted-subtracted, inferno) 
+    im2 = ax.imshow(data2, aspect='auto', interpolation='none', vmin=-0.1, vmax=0.1,
+                    extent=[uv.freq_array[0]*1e-6, uv.freq_array[-1]*1e-6, 2 * nrows, nrows], cmap='inferno')
+    
+    #im2 = ax.imshow(data2, aspect='auto', interpolation='none', vmin=-0.1, vmax=0.1,cmap='inferno')
+
+    # y-ticks
+    ax.set_yticks([0, nrows - 1, 2 * nrows - 1])
+    ax.set_yticklabels([time[0], time[-1], time[-1]])
+
+    # x-ticks
+    ax.set_xticks(freqs_MHz)
+    
+    # This method seems to not work with how I had to construct the stacked wfs. When paired with alternate im1 and im2 methods
+    # it results in stacking the wfs directly on top of each other. When paired with the im1 and im2 currently in use,
+    # it only shows a single tick mark, 72.3, but way off to the right side. I don't know enough to suggest why this happens.
+    #ax.set_xticks(freq_tick_inds)
+    
+    ax.set_xticklabels([f"{val:.1f}" for val in uv.freq_array[freq_tick_inds]*1e-6])
+    ax.locator_params(axis='x', nbins=8)
+    ax.set_xlabel("Frequency (MHz)")
+    ax.set_title("Mean-Subtracted (Top), Shifted-Subtracted (Bottom)", fontsize=18)
+    
+
+    # Divider and labels
+    ax.axhline(y=nrows, color='white', linestyle='--', linewidth=1.5)
+
+    # Add colorbars
+    cbar1 = fig.colorbar(im1, ax=ax, fraction=0.02, pad=0.06)
+    cbar2 = fig.colorbar(im2, ax=ax, fraction=0.02, pad=0.02)
+
+    plt.tight_layout()
+    plt.show()
+# Worth noting that stacking these plots causes a vertical compression, so it'll look a bit funny, but finding worms will still
+# be easier.
+
 def plot_closure(uvd, triad_length, pol):
     """Plot closure phase for an example triad.
     Parameters
