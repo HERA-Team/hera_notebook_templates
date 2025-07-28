@@ -718,7 +718,7 @@ def plot_mean_subtracted_wfs(uvd, use_ants, jd, pols=['xx','yy']):
             cbar_ax=fig.add_axes([0.88,pos.y0,0.02,pos.height])
             fig.colorbar(im, cax=cbar_ax)
     fig.show()
-
+# I have only used the stacked_wfs function on a single antenna so far. Next order of business is to create a function that iterates through antennas like the wf plots above.
 def stacked_wfs(data1, data2, time, name1="Mean Subtracted", name2="Shifted/Subtracted"):
     fig, ax = plt.subplots(1, 1, figsize=(16, 12))
 
