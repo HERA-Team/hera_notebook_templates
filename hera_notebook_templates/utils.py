@@ -578,7 +578,144 @@ def plot_autos(uvdx, uvdy):
         axes[i,maxants-1].annotate(f'Node {n}', (1.1,.3),xycoords='axes fraction',rotation=270)
     plt.show()
     plt.close()
-    
+# ===This is the new function for plotting waterfalls. Scroll down to the 8th function to see 
+# ===the actual plotting function===     
+# === 1/n prep data ===
+def prepare_data(uvd, pol):
+    amps = np.abs(uvd.data_array[:, :, pol].reshape(uvd.Ntimes, uvd.Nants_data, uvd.Nfreqs, 1))
+    nodes, antDict, inclNodes = generate_nodeDict(uvd)
+    ants = uvd.get_ants()
+    sorted_ants = sort_antennas(uvd)
+    freqs = uvd.freq_array * 1e-6  # corresponds to MHz
+    times = uvd.time_array
+    lsts = uvd.lst_array * 3.819719  # degrees to hours
+    inds = np.unique(lsts, return_index=True)[1]
+    lsts = [lsts[ind] for ind in sorted(inds)]
+    return amps, nodes, antDict, inclNodes, ants, sorted_ants, freqs, times, lsts
+
+# === 2/n plot grid dimensions ===
+def compute_plot_dimensions(nodes):
+    maxants = max(len(nodes[n]['ants']) for n in nodes)
+    Yside = len(nodes)
+    return maxants, Yside, maxants  # Nside, Yside, maxants
+
+# === 3/n setup plot ===
+def setup_figure(pol, Yside, Nside, times):
+    jd = times[0]
+    utc = Time(jd, format='jd').datetime
+    fig, axes = plt.subplots(Yside, Nside, figsize=(16, Yside * 5))
+    ptitle = 1.92 / (Yside * 3)
+    title = "North Polarization" if pol == 0 else "East Polarization"
+    fig.suptitle(title, fontsize=14, y=1 + ptitle)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.subplots_adjust(left=0, bottom=0.1, right=0.9, top=1, wspace=0.1, hspace=0.3)
+    return fig, axes, jd, utc
+
+# === 4/n autoscale limits ===
+def autoscale_limits(uvd):
+    med = np.nanmedian(np.log10(np.abs(uvd.data_array)))
+    return med - 0.75, med + 0.75
+
+# === 5/n plot node/antenna data ===
+def plot_node_waterfalls(fig, axes, nodes, sorted_ants, inclNodes, uvd, h, pol,
+                         freqs, lsts, mean_sub, vmin, vmax, maxants, stacked=False):
+    polnames = ['xx', 'yy']
+    for i, n in enumerate(inclNodes):
+        ants = nodes[n]['ants']
+        j = 0
+        for _, a in enumerate(sorted_ants):
+            if a not in ants:
+                continue
+            status = get_ant_status(h, a)
+            abb = status_abbreviations[status]
+            ax = axes[i, j]
+            dat = np.log10(np.abs(uvd.get_data(a, a, polnames[pol])))
+            if mean_sub:
+                dat = dat - np.nanmean(dat, axis=0)
+
+            nrows = dat.shape[0]
+
+            if stacked:
+                extent1 = [freqs[0], freqs[-1], nrows, 0]
+                extent2 = [freqs[0], freqs[-1], 2 * nrows, nrows]
+                im1 = ax.imshow(dat, vmin=-0.1, vmax=0.1, aspect='auto', interpolation='none', cmap='viridis', extent=extent1)
+                im2 = ax.imshow(dat, vmin=-0.1, vmax=0.1, aspect='auto', interpolation='none', cmap='inferno', extent=extent2)
+                ax.set_ylim(2 * nrows, 0)
+                ax.axhline(y=nrows, color='white', linestyle='--', linewidth=1.0)
+            else:
+                im1 = ax.imshow(dat, vmin=vmin, vmax=vmax, aspect='auto', interpolation='nearest', cmap='viridis')
+                im2 = None
+
+            ax.set_title(f'{a} ({abb})', fontsize=10, backgroundcolor=status_colors[status])
+
+            # frequency axis formatting
+            if i == len(inclNodes) - 1:
+                xticks = [int(x) for x in np.linspace(0, len(freqs) - 1, 3)]
+                xticklabels = np.around(freqs[xticks], 0)
+                ax.set_xticks(xticks)
+                ax.set_xticklabels(xticklabels)
+                ax.set_xlabel('Freq (MHz)', fontsize=10)
+                [t.set_rotation(70) for t in ax.get_xticklabels()]
+            else:
+                ax.set_xticklabels([])
+
+            # time (LST) axis formatting
+            if j != 0:
+                ax.set_yticklabels([])
+            else:
+                yticks = [int(y) for y in np.linspace(0, len(lsts) - 1, 6)]
+                yticklabels = [np.around(lsts[y], 1) for y in yticks]
+                if stacked:
+                    yticks_combined = yticks + [y + len(lsts) for y in yticks]
+                    yticklabels_combined = yticklabels + yticklabels
+                    ax.set_yticks(yticks_combined)
+                    ax.set_yticklabels(yticklabels_combined)
+                else:
+                    ax.set_yticks(yticks)
+                    ax.set_yticklabels(yticklabels)
+                ax.set_ylabel('Time (LST)', fontsize=10)
+                [t.set_fontsize(12) for t in ax.get_yticklabels()]
+
+            j += 1
+
+        # turn off unused axes
+        for k in range(j, maxants):
+            axes[i, k].axis('off')
+
+        # colorbar parameters/setup
+        pos = ax.get_position()
+        cbar_ax1 = fig.add_axes([0.91, pos.y0 + 0.5 * pos.height, 0.01, 0.5 * pos.height])
+        cbar1 = fig.colorbar(im1, cax=cbar_ax1)
+        cbar1.set_label(f'Node {n} (Viridis)', rotation=270, labelpad=15)
+        if stacked and im2 is not None:
+            cbar_ax2 = fig.add_axes([0.93, pos.y0, 0.01, 0.5 * pos.height])
+            cbar2 = fig.colorbar(im2, cax=cbar_ax2)
+            cbar2.set_label(f'Node {n} (Inferno)', rotation=270, labelpad=15)
+
+# === 6/n save plot ===
+def save_figure(fig, jd, pol):
+    fig.savefig(f'{jd}_mean_subtracted_per_node_{pol}.png', bbox_inches='tight', dpi=300)
+    plt.close(fig)
+
+# === 7/n display plot ===
+def display_figure(fig):
+    plt.show()
+    plt.close(fig)
+
+# === 8/8 (call this function to plot wfs) Main plotting function ===
+def plot_wfs2(uvd, pol, mean_sub=False, save=False, jd='', auto_scale=True, vmin=6.5, vmax=8, stacked=False):
+    amps, nodes, antDict, inclNodes, ants, sorted_ants, freqs, times, lsts = prepare_data(uvd, pol)
+    Nside, Yside, maxants = compute_plot_dimensions(nodes)
+    fig, axes, jd, utc = setup_figure(pol, Yside, Nside, times)
+    if auto_scale:
+        vmin, vmax = autoscale_limits(uvd)
+    h = cm_active.get_active(at_date=jd, float_format="jd")
+    plot_node_waterfalls(fig, axes, nodes, sorted_ants, inclNodes, uvd, h, pol, 
+                         freqs, lsts, mean_sub, vmin, vmax, maxants, stacked=stacked)
+    if save:
+        save_figure(fig, jd, pol)
+    else:
+        display_figure(fig)    
 def plot_wfs(uvd, pol, mean_sub=False, save=False, jd='',auto_scale=True,vmin=6.5,vmax=8):
     amps = np.abs(uvd.data_array[:, :, pol].reshape(uvd.Ntimes, uvd.Nants_data, uvd.Nfreqs, 1))
     nodes, antDict, inclNodes = generate_nodeDict(uvd)
