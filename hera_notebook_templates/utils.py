@@ -745,10 +745,10 @@ def plot_node_waterfalls(fig, axes, nodes, sorted_ants, inclNodes, uvd, h, pol,
             # --- CHANGE END ---
             
             nrows = dat1.shape[0]
-
+            gap_size = 50
             if stacked:
                 extent1 = [freqs[0], freqs[-1], nrows, 0]
-                extent2 = [freqs[0], freqs[-1], 2 * nrows, nrows]
+                extent2 = [freqs[0], freqs[-1], 2 * nrows + gap_size, nrows + gap_size]
                 
                 # --- CHANGE START: use dat1 and dat2 separately ---
                 im1 = ax.imshow(dat1, vmin=-0.1, vmax=0.1, aspect='auto', interpolation='none',
@@ -756,8 +756,8 @@ def plot_node_waterfalls(fig, axes, nodes, sorted_ants, inclNodes, uvd, h, pol,
                 im2 = ax.imshow(dat2, vmin=-0.1, vmax=0.1, aspect='auto', interpolation='none',
                                 cmap='inferno', extent=extent2)
                 # --- CHANGE END ---
-                ax.set_ylim(2 * nrows, 0)
-                ax.axhline(y=nrows, color='white', linestyle='--', linewidth=1.0)
+                ax.set_ylim(2 * nrows + gap_size, 0)
+                ax.axhline(y=nrows + gap_size / 2, color='white', linestyle='--', linewidth=1.0)
             else:
                 im1 = ax.imshow(dat, vmin=vmin, vmax=vmax, aspect='auto', interpolation='nearest', cmap='viridis')
                 im2 = None
@@ -782,7 +782,7 @@ def plot_node_waterfalls(fig, axes, nodes, sorted_ants, inclNodes, uvd, h, pol,
                 yticks = [int(y) for y in np.linspace(0, len(lsts) - 1, 6)]
                 yticklabels = [np.around(lsts[y], 1) for y in yticks]
                 if stacked:
-                    yticks_combined = yticks + [y + len(lsts) for y in yticks]
+                    yticks_combined = yticks + [y + len(lsts) + gap_size for y in yticks]
                     yticklabels_combined = yticklabels + yticklabels
                     ax.set_yticks(yticks_combined)
                     ax.set_yticklabels(yticklabels_combined)
@@ -800,7 +800,7 @@ def plot_node_waterfalls(fig, axes, nodes, sorted_ants, inclNodes, uvd, h, pol,
 
         # colorbar parameters/setup
         pos = ax.get_position()
-        cbar_ax1 = fig.add_axes([0.91, pos.y0 + 0.51 * pos.height, 0.01, 0.5 * pos.height]) 
+        cbar_ax1 = fig.add_axes([0.91, pos.y0 + 0.55 * pos.height, 0.01, 0.5 * pos.height]) 
         #parameters are: % from left edge, distance from bottom of plot, width, height
         cbar1 = fig.colorbar(im1, cax=cbar_ax1)
         cbar1.set_label(f'Node {n} (Viridis)', rotation=270, labelpad=15)
@@ -820,7 +820,7 @@ def display_figure(fig):
     plt.close(fig)
 
 # === 8/8 (call this function to plot wfs) Main plotting function ===
-def plot_wfs2(uvd, pol, mean_sub=False, save=False, jd='', auto_scale=True, vmin=6.5, vmax=8, stacked=False, freq_shift=False, shift_num=10):
+def plot_wfs2(uvd, pol, mean_sub=False, save=False, jd='', auto_scale=True, vmin=6.5, vmax=8, stacked=False, freq_shift=False, shift_num=10, gap_size=50):
     amps, nodes, antDict, inclNodes, ants, sorted_ants, freqs, times, lsts = prepare_data(uvd, pol)
     Nside, Yside, maxants = compute_plot_dimensions(nodes)
     fig, axes, jd, utc = setup_figure(pol, Yside, Nside, times)
@@ -884,78 +884,6 @@ def plot_mean_subtracted_wfs(uvd, use_ants, jd, pols=['xx','yy']):
             cbar_ax=fig.add_axes([0.88,pos.y0,0.02,pos.height])
             fig.colorbar(im, cax=cbar_ax)
     fig.show()
-
-def stacked_wfs(data1, data2, time, name1="Mean Subtracted", name2="Shifted/Subtracted"):
-    fig, ax = plt.subplots(1, 1, figsize=(16, 12))
-
-    # Setup x-tick locations
-    freq_tick_inds = np.concatenate((np.arange(0, uv.Nfreqs, 16), [uv.Nfreqs-1]))
-    freqs_MHz = uv.freq_array[freq_tick_inds] * 1e-6
-    nrows = data1.shape[0]
-
-    # Plot top half (mean-subtracted, viridis)
-    im1 = ax.imshow(data1, aspect='auto', interpolation='none', vmin=-0.1, vmax=0.1,
-                    extent=[uv.freq_array[0]*1e-6, uv.freq_array[-1]*1e-6, nrows, 0], cmap='viridis')
-    
-    #im1 = ax.imshow(data1, aspect='auto', interpolation='none', vmin=-0.1, vmax=0.1,cmap='viridis')
-
-    # Plot bottom half (shifted-subtracted, inferno) 
-    im2 = ax.imshow(data2, aspect='auto', interpolation='none', vmin=-0.1, vmax=0.1,
-                    extent=[uv.freq_array[0]*1e-6, uv.freq_array[-1]*1e-6, 2 * nrows, nrows], cmap='inferno')
-    
-    #im2 = ax.imshow(data2, aspect='auto', interpolation='none', vmin=-0.1, vmax=0.1,cmap='inferno')
-
-    # y-ticks
-    ax.set_yticks([0, nrows - 1, 2 * nrows - 1])
-    ax.set_yticklabels([time[0], time[-1], time[-1]])
-
-    # x-ticks
-    ax.set_xticks(freqs_MHz)
-    
-    # This method seems to not work with how I had to construct the stacked wfs. When paired with alternate im1 and im2 methods
-    # it results in stacking the wfs directly on top of each other. When paired with the im1 and im2 currently in use,
-    # it only shows a single tick mark, 72.3, but way off to the right side. I don't know enough to suggest why this happens.
-    #ax.set_xticks(freq_tick_inds)
-    
-    ax.set_xticklabels([f"{val:.1f}" for val in uv.freq_array[freq_tick_inds]*1e-6])
-    ax.locator_params(axis='x', nbins=8)
-    ax.set_xlabel("Frequency (MHz)")
-    ax.set_title("Mean-Subtracted (Top), Shifted-Subtracted (Bottom)", fontsize=18)
-    
-
-    # Divider and labels
-    ax.axhline(y=nrows, color='white', linestyle='--', linewidth=1.5)
-
-    # Add colorbars
-    cbar1 = fig.colorbar(im1, ax=ax, fraction=0.02, pad=0.06)
-    cbar2 = fig.colorbar(im2, ax=ax, fraction=0.02, pad=0.02)
-
-    plt.tight_layout()
-    plt.show()
-    
-def plot_stacked_wfs_for_all_ants(uvd, use_ants, jd, pols=['xx', 'yy']):
-    freqs = (uvd.freq_array) * 1e-6
-    times = uvd.time_array
-    lsts = uvd.lst_array * 3.819719
-    inds = np.unique(lsts, return_index=True)[1]
-    lsts = [lsts[ind] for ind in sorted(inds)]
-    ants = sorted(use_ants)
-
-    for ant in ants:
-        for pol in pols:
-            try:
-                # Get data and process
-                raw_data = np.abs(uvd.get_data(ant, ant, pol))
-                mean_subtracted = raw_data - np.nanmean(raw_data, axis=0)
-                shifted = np.roll(raw_data, shift=5, axis=0)  # Example shift
-
-                # Plot
-                stacked_wfs(mean_subtracted, shifted, time=lsts,
-                            name1="Mean Subtracted", name2="Shifted/Subtracted")
-
-                print(f" Plotted antenna {ant}, pol {pol}")
-            except Exception as e:
-                print(f" Failed for antenna {ant}, pol {pol}: {e}")
 
     
 def plot_closure(uvd, triad_length, pol):
