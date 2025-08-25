@@ -747,14 +747,14 @@ def plot_node_waterfalls(fig, axes, nodes, sorted_ants, inclNodes, uvd, h, pol,
             nrows = dat1.shape[0]
             gap_size = 50
             if stacked:
-                #extent1 = [freqs[0], freqs[-1], nrows, 0]
-                #extent2 = [freqs[0], freqs[-1], 2 * nrows + gap_size, nrows + gap_size]
+                extent1 = [0, dat1.shape[1], nrows, 0]
+                extent2 = [0, dat2.shape[1], 2 * nrows + gap_size, nrows + gap_size]
                 
                 # --- CHANGE START: use dat1 and dat2 separately ---
                 im1 = ax.imshow(dat1, vmin=-0.1, vmax=0.1, aspect='auto', interpolation='none',
-                                cmap='viridis')
+                                cmap='viridis', extent=extent1)
                 im2 = ax.imshow(dat2, vmin=-0.1, vmax=0.1, aspect='auto', interpolation='none',
-                                cmap='inferno')
+                                cmap='inferno', extent=extent2)
                 # --- CHANGE END ---
                 ax.set_ylim(2 * nrows + gap_size, 0)
                 ax.axhline(y=nrows + gap_size / 2, color='white', linestyle='--', linewidth=1.0)
