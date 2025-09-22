@@ -820,7 +820,7 @@ def display_figure(fig):
     plt.close(fig)
 
 # === 8/8 (call this function to plot wfs) Main plotting function ===
-def plot_wfs2(uvd, pol, mean_sub=False, save=False, jd='', auto_scale=True, vmin=6.5, vmax=8, stacked=False, freq_shift=False, shift_num=10, gap_size=50):
+def plot_fsub_waterfalls(uvd, pol, mean_sub=False, save=False, jd='', auto_scale=True, vmin=6.5, vmax=8, stacked=False, freq_shift=False, shift_num=10, gap_size=50):
     amps, nodes, antDict, inclNodes, ants, sorted_ants, freqs, times, lsts = prepare_data(uvd, pol)
     Nside, Yside, maxants = compute_plot_dimensions(nodes)
     fig, axes, jd, utc = setup_figure(pol, Yside, Nside, times)
