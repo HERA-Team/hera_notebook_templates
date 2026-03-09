@@ -10,3 +10,4 @@ hera_notebook_templates/GIT_INFO
 hera_notebook_templates/_version.py
 .qodo
 NF_HERA_Vivaldi*.fits
+/.claude
