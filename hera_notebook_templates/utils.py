@@ -3028,3 +3028,113 @@ def parse_band_str(band_str: str, freqs: np.ndarray) -> tuple[float, list[float]
         band_slices,
         nchans,
     )
+
+def get_ant_to_snap_dict(jd, antnums):
+    """Walk the M&C configuration-management database to map antennas to the SNAPs
+    that digitize them, valid at the given julian date. The walk follows
+    HH -> A -> FDV -> FEM -> NBP -> PAM -> SNP, with part_rosetta supplying
+    location hostnames (e.g. 'heraNode14Snap0') where defined.
+
+    Arguments:
+        jd: julian date at which the connections must be active
+        antnums: iterable of antenna numbers to map
+
+    Returns:
+        ant_to_snap: dict mapping antenna number to SNAP hostname (antennas whose
+            walk fails are simply absent)
+
+    Raises:
+        AssertionError: if M&C is unreachable/empty or the walk maps implausibly
+            few antennas -- SNAP mapping is load-bearing for decoherence work,
+            so this fails loudly rather than proceeding without it.
+    """
+    from collections import defaultdict
+    from sqlalchemy import text
+    from hera_mc import mc
+
+    t_gps = float(Time(float(jd), format='jd').gps)
+    db = mc.connect_to_mc_db(None, check_connect=False)
+    with db.sessionmaker() as session:
+        conns = list(session.execute(text(
+            'SELECT upstream_part, downstream_part, upstream_output_port, '
+            'downstream_input_port FROM connections WHERE start_gpstime <= :t '
+            'AND (stop_gpstime IS NULL OR stop_gpstime >= :t)'), {'t': t_gps}))
+        rosetta = dict(session.execute(text(
+            'SELECT hpn, syspn FROM part_rosetta WHERE start_gpstime <= :t '
+            'AND (stop_gpstime IS NULL OR stop_gpstime >= :t)'), {'t': t_gps}).all())
+    assert len(conns) > 1000, 'M&C unreachable or empty -- SNAP mapping unavailable'
+
+    down_of = defaultdict(list)
+    for up, down, port_out, port_in in conns:
+        down_of[up].append((down, port_out, port_in))
+
+    ant_to_snap = {}
+    for antnum in antnums:
+        ant = next((d for d, po, pi in down_of.get(f'HH{antnum}', []) if d.startswith('A')), None)
+        fdv = ant and next((d for d, po, pi in down_of.get(ant, []) if d.startswith('FD')), None)
+        fem = fdv and next((d for d, po, pi in down_of.get(fdv, []) if d.startswith('FEM')), None)
+        if not fem:
+            continue
+        for feed_pol in ['e', 'n']:
+            hop = next(((d, pi) for d, po, pi in down_of.get(fem, [])
+                        if po == feed_pol and d.startswith('NBP')), None)
+            if not hop:
+                continue
+            nbp, nbp_port = hop
+            pam = next((d for d, po, pi in down_of.get(nbp, []) if po == nbp_port), None)
+            snp = pam and next((d for d, po, pi in down_of.get(pam, [])
+                                if po == feed_pol and d.startswith('SNP')), None)
+            if snp:
+                if snp in rosetta:
+                    ant_to_snap[antnum] = rosetta[snp]  # location hostname from rosetta
+                else:
+                    node_digits = ''.join(ch for ch in nbp if ch.isdigit())
+                    ant_to_snap[antnum] = (f'{snp}[N{int(node_digits):02d}]'
+                                           if node_digits else snp)
+                break
+    assert len(ant_to_snap) > 50, \
+        f'only {len(ant_to_snap)} antennas mapped -- M&C walk failed?'
+    return ant_to_snap
+
+
+def snap_labelers(snaps):
+    """Build human-readable labeling functions for a set of SNAP hostnames.
+
+    Arguments:
+        snaps: iterable of SNAP hostnames (e.g. 'heraNode14Snap0' or
+            'SNPC000063[N06]' for SNAPs without rosetta hostnames)
+
+    Returns:
+        snap_node_slot: function mapping hostname to (node, slot, serial), with
+            slot None (and the serial string) for non-rosetta names
+        snap_sort_key: function usable as a sorted() key (node, then slot)
+        snap_label: function mapping hostname to e.g. 'N14 Snap0'
+    """
+    import re as _re
+
+    def snap_node_slot(snap):
+        match = _re.match(r'heraNode(\d+)Snap(\d)', snap)
+        if match:
+            return int(match.group(1)), int(match.group(2)), None
+        match = _re.search(r'\[N(\d+)\]', snap)
+        return (int(match.group(1)) if match else 99), None, snap.split('[')[0]
+
+    unlabeled = {}
+    for snap in set(snaps):
+        node, slot, serial = snap_node_slot(snap)
+        if slot is None:
+            unlabeled.setdefault(node, []).append(snap)
+    slot_letter = {snap: 'ABCDEFGH'[k] for node, group in unlabeled.items()
+                   for k, snap in enumerate(sorted(group))}
+
+    def snap_sort_key(snap):
+        node, slot, serial = snap_node_slot(snap)
+        return (node, slot if slot is not None else 10, slot_letter.get(snap, ''))
+
+    def snap_label(snap):
+        node, slot, serial = snap_node_slot(snap)
+        if slot is not None:
+            return f'N{node:02d} Snap{slot}'
+        return f'N{node:02d} Snap{slot_letter[snap]} ({serial})'
+
+    return snap_node_slot, snap_sort_key, snap_label
