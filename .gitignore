@@ -12,3 +12,4 @@ hera_notebook_templates/_version.py
 NF_HERA_Vivaldi*.fits
 /.claude
 /notebooks/old_drafts
+/.nb_review
